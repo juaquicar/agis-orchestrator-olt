@@ -1,126 +1,177 @@
-# collector/tasks.py
 """
-Tareas Celery que:
-1. Cargan la definición de OLTs desde config/olts.yaml
-2. Sincronizan la tabla 'olt' en TimescaleDB/Postgres
-3. Programan un sondeo periódico (PTX/PRX) por cada OLT
+collector/tasks.py
+──────────────────────────────────────────────────────────────
+• Lee config/olts.yaml
+• Sincroniza la tabla `olt`
+• Programa una tarea periódica por OLT
+• Guarda potencias en ont_power (TimescaleDB/PostGIS)
 """
+
+from __future__ import annotations
 
 import os
-import datetime as dt
 import logging
-from typing import Dict, Any
+import datetime as dt
+from typing import Any, Dict, List
 
+import yaml
 from celery import Celery
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
-from sqlalchemy import text          #  ← AÑADE ESTA LÍNEA
 
-from config import load_config        # lee YAML y aplica defaults
-from db import get_engine
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Dependencias de equipos (import condicional para que pytest no falle)
+# ── APIs OLT ─────────────────────────────────────────────────
 try:
-    from jmq_olt_huawei import HuaweiOLT
-    from jmq_olt_zyxel import ZyxelOLT
-except ImportError:                    # en tests sin librerías
-    HuaweiOLT = ZyxelOLT = None
+    from jmq_olt_huawei.ma56xxt import APIMA56XXT, UserBusyError
+    from jmq_olt_zyxel.OLT1408A import APIOLT1408A
+except ImportError as e:
+    APIMA56XXT = APIOLT1408A = None
+    print("IMPORT ERROR (librerías OLT):", e)
 
-# ──────────────────────────────────────────────────────────────────────────────
-BROKER_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-DB_DSN = os.getenv("DB_DSN", "postgresql://postgres:changeme@db:5432/olt")
+# ── Config global ───────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
 
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s %(levelname)s %(message)s")
+BROKER_URL  = os.getenv("REDIS_URL", "redis://redis:6379/0")
+DB_DSN      = os.getenv("DB_DSN",
+                        "postgresql://postgres:changeme@db:5432/olt")
+CONFIG_PATH = os.getenv("OLT_CONFIG_PATH", "/config/olts.yaml")
 
-app = Celery("collector", broker=BROKER_URL)
-engine = get_engine()
+app    = Celery("collector", broker=BROKER_URL)
+engine = create_engine(DB_DSN, future=True, pool_pre_ping=True)
 
-# Carga definición de OLTs una sola vez al arranque
-OLTS: list[Dict[str, Any]] = load_config()
+# ── YAML ────────────────────────────────────────────────────
+def load_config() -> List[Dict[str, Any]]:
+    with open(CONFIG_PATH, "r") as f:
+        raw = yaml.safe_load(f)
 
-# ─────────────────── Helpers DB ───────────────────────────────────────────────
-def sync_db():
+    defaults = raw.get("defaults", {})
+    out: List[Dict[str, Any]] = []
+    for olt in raw.get("olts", []):
+        cfg = defaults.copy()
+        cfg.update(olt)
+        out.append(cfg)
+    return out
+
+
+OLTS = load_config()
+
+# ── Sync tabla olt ──────────────────────────────────────────
+_INSERT_OLT = text("""
+    INSERT INTO olt(id,vendor,host,port,username,password,
+                    poll_interval,prompt,description)
+    VALUES (:id,:vendor,:host,:port,:username,:password,
+            :pi,:prompt,:desc)
+    ON CONFLICT (id) DO UPDATE SET
+        host=:host, port=:port, username=:username, password=:password,
+        poll_interval=:pi, prompt=:prompt, description=:desc
+""")
+
+def sync_db() -> None:
     with Session(engine) as db:
-        for cfg in OLTS:
-            stmt = text("""
-                INSERT INTO olt(id,vendor,host,port,username,password,
-                                poll_interval,prompt,description)
-                VALUES (:id,:vendor,:host,:port,:username,:password,
-                        :pi,:prompt,:desc)
-                ON CONFLICT (id) DO UPDATE SET
-                    host=:host,
-                    port=:port,
-                    username=:username,
-                    password=:password,
-                    poll_interval=:pi,
-                    prompt=:prompt,
-                    description=:desc
-            """)
-            db.execute(stmt, dict(
-                id       = cfg["id"],
-                vendor   = cfg["vendor"],
-                host     = cfg["host"],
-                port     = cfg["port"],
-                username = cfg["username"],
-                password = cfg["password"],
-                pi       = cfg["poll_interval"],
-                prompt   = cfg["prompt"],
-                desc     = cfg.get("description")
-            ))
+        for c in OLTS:
+            db.execute(_INSERT_OLT, {
+                "id": c["id"], "vendor": c["vendor"], "host": c["host"],
+                "port": c["port"], "username": c["username"],
+                "password": c["password"], "pi": c["poll_interval"],
+                "prompt": c["prompt"], "desc": c.get("description"),
+            })
         db.commit()
-# ─────────────────── Celery bootstrap ────────────────────────────────────────
+
+# ── Factoría de clientes ───────────────────────────────────
+def build_client(cfg: Dict[str, Any]):
+    timeout = cfg.get("timeout", 5)
+
+    if cfg["vendor"] == "zyxel":
+        if APIOLT1408A is None:
+            raise ImportError("jmq_olt_zyxel no instalado")
+        return APIOLT1408A(
+            host=cfg["host"], port=cfg["port"],
+            username=str(cfg["username"]), password=str(cfg["password"]),
+            prompt=cfg["prompt"], timeout=timeout,
+        )
+
+    if cfg["vendor"] == "huawei":
+        if APIMA56XXT is None:
+            raise ImportError("jmq_olt_huawei no instalado")
+        return APIMA56XXT(
+            host=cfg["host"], port=cfg["port"],
+            username=str(cfg["username"]), password=str(cfg["password"]),
+            prompt=cfg["prompt"], timeout=timeout,
+        )
+
+    raise ValueError(f"Vendor no soportado: {cfg['vendor']}")
+
+# ── Arranque Celery ─────────────────────────────────────────
 @app.on_after_configure.connect
-def setup_periodic(sender, **kwargs):
-    """Se ejecuta una sola vez tras cargar el worker."""
-    logging.info("Sincronizando tabla 'olt' con configuración YAML…")
+def setup_periodic(sender, **_):
+    logging.info("Sincronizando tabla 'olt'…")
     sync_db()
 
-    for cfg in OLTS:
+    for c in OLTS:
         sender.add_periodic_task(
-            cfg["poll_interval"],
-            poll_single_olt.s(cfg),
-            name=f"poll_{cfg['id']}"
+            c["poll_interval"],
+            poll_single_olt.s(c),
+            name=f"poll_{c['id']}",
         )
-        logging.info(
-            "Programada tarea 'poll_%s' cada %s s",
-            cfg["id"], cfg["poll_interval"]
-        )
+        logging.info("Programada 'poll_%s' cada %s s", c["id"], c["poll_interval"])
 
-# ─────────────────── Tarea principal ─────────────────────────────────────────
+# ── Tarea principal ─────────────────────────────────────────
 @app.task
-def poll_single_olt(cfg: Dict[str, Any]):
-    """Sondea una OLT y almacena potencias."""
+def poll_single_olt(cfg: Dict[str, Any]) -> None:
+    logging.info("Sondeando OLT %s (%s)…", cfg["id"], cfg["vendor"])
 
-    vendor = cfg["vendor"]
-    logging.info("Sondeando OLT %s (%s)…", cfg["id"], vendor)
-
-    # 1. Instancia cliente según fabricante
-    if vendor == "zyxel":
-        client = ZyxelOLT(cfg["host"], cfg["username"], cfg["password"],
-                          port=cfg["port"], prompt=cfg["prompt"])
-    elif vendor == "huawei":
-        client = HuaweiOLT(cfg["host"], cfg["username"], cfg["password"],
-                           port=cfg["port"], prompt=cfg["prompt"])
-    else:
-        logging.error("Vendor no soportado: %s", vendor)
-        return
-
-    # 2. Obtiene lista de ONTs + potencias
     try:
-        onts = client.get_onts()          # depende de la librería
-    except Exception as exc:
-        logging.exception("Fallo consultando %s: %s", cfg["id"], exc)
+        client = build_client(cfg)
+    except ImportError as exc:
+        logging.error("Cliente no disponible: %s", exc)
         return
 
-    # 3. Inserta en BD
-    now = dt.datetime.utcnow()
-    rows = [(now, ont.id, ont.tx, ont.rx) for ont in onts]
+    # 1 ▸ consulta ONTs
+    try:
+        onts = client.get_all_onts() if cfg["vendor"] == "zyxel" else client.get_onts()
+    except UserBusyError:
+        logging.warning("OLT %s ocupado, se reintentará", cfg["id"])
+        return
+    except Exception as exc:
+        logging.exception("Error consultando %s: %s", cfg["id"], exc)
+        return
 
-    with Session(engine) as db:
-        db.executemany(
-            "INSERT INTO ont_power(time, ont_id, ptx, prx) VALUES (%s,%s,%s,%s)",
-            rows
-        )
-        db.commit()
+    # 2 ▸ construye filas
+    now = dt.datetime.utcnow()
+    rows = []
+
+    for ont in onts:
+        if isinstance(ont, dict):    # Zyxel
+            oid = ont.get("id") or ont.get("AID")
+            ptx = ont.get("tx") or ont.get("ONT Tx") or ont.get("ptx")
+            prx = ont.get("rx") or ont.get("ONT Rx") or ont.get("prx")
+            if not oid:
+                logging.debug("Descartado dict sin ID: %s", ont)
+                continue
+            rows.append({
+                "time": now,
+                "ont_id": str(oid),
+                "ptx": float(ptx or 0),
+                "prx": float(prx or 0),
+            })
+        else:                        # Huawei (objeto)
+            rows.append({
+                "time": now,
+                "ont_id": str(ont.id),
+                "ptx": float(getattr(ont, "tx", getattr(ont, "ptx", 0))),
+                "prx": float(getattr(ont, "rx", getattr(ont, "prx", 0))),
+            })
+
+    if not rows:
+        logging.warning("OLT %s devolvió 0 ONTs", cfg["id"])
+        return
+
+    # 3 ▸ inserta masivamente
+    stmt = text("INSERT INTO ont_power(time, ont_id, ptx, prx) "
+                "VALUES (:time, :ont_id, :ptx, :prx)")
+    with engine.begin() as conn:                 # open + commit automático
+        conn.execute(stmt, rows)
+
     logging.info("OLT %s → %d registros insertados", cfg["id"], len(rows))

@@ -12,7 +12,7 @@ olts:
     password: 1234
     prompt: "OLT1408A#"                 # Zyxel suele terminar con >
     description: "Zyxel – Central"
-    poll_interval: 120
+    poll_interval: 30
 
 #  - id: huawei-nodo-sur
 #    vendor: huawei
