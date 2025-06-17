@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
-from .database import get_db    # tu helper async_session
+from .database import get_db  # tu helper async_session
 
 app = FastAPI(
     title="OLT Orchestrator API",
@@ -18,9 +18,8 @@ app = FastAPI(
 
 # ───────────────────────── PING ────────────────────────────
 @app.get("/health", tags=["misc"])
-async def health():
+async def health() -> Dict[str, str]:
     return {"status": "ok ok"}
-
 
 # ───────────────────────── GEOJSON ─────────────────────────
 def parse_bbox(bbox: str) -> List[float]:
@@ -32,109 +31,136 @@ def parse_bbox(bbox: str) -> List[float]:
         raise HTTPException(400, "bbox inválido")
     return [minx, miny, maxx, maxy]
 
-
-@app.get("/geo", tags=["geo"],
-         summary="Geometría de ONTs en BBOX",
-         response_description="GeoJSON FeatureCollection")
+@app.get(
+    "/geo",
+    tags=["geo"],
+    summary="Geometría de ONTs en BBOX",
+    response_description="GeoJSON FeatureCollection"
+)
 async def geo(
-    bbox: str = Query(...,
-                      example="-3.80,40.38,-3.60,40.49",
-                      description="minLon,minLat,maxLon,maxLat"),
+    bbox: str = Query(
+        ..., example="-3.80,40.38,-3.60,40.49",
+        description="minLon,minLat,maxLon,maxLat"
+    ),
     db: AsyncSession = Depends(get_db),
-):
+) -> Dict[str, Any]:
     minx, miny, maxx, maxy = parse_bbox(bbox)
-
     sql = text("""
-        SELECT ont.id, ont.olt_id, ont.serial,
-               ST_AsGeoJSON(COALESCE(ont.geom, cto.geom)) AS geom
-          FROM ont
-          LEFT JOIN cto ON ont.cto_uuid = cto.uuid
-         WHERE ST_Intersects(
-                 COALESCE(ont.geom, cto.geom),
-                 ST_MakeEnvelope(:minx,:miny,:maxx,:maxy,4326)
+        SELECT
+          o.id,
+          o.olt_id,
+          o.vendor_ont_id AS vendor_ont_id,
+          o.serial,
+          ST_AsGeoJSON(COALESCE(o.geom, c.geom)) AS geom
+        FROM ont AS o
+        LEFT JOIN cto AS c ON o.cto_uuid = c.uuid
+        WHERE ST_Intersects(
+          COALESCE(o.geom, c.geom),
+          ST_MakeEnvelope(:minx, :miny, :maxx, :maxy, 4326)
         )
     """)
-    rows = (await db.execute(sql,
-                             {"minx": minx, "miny": miny,
-                              "maxx": maxx, "maxy": maxy})).fetchall()
+    result = await db.execute(sql, {
+        "minx": minx,
+        "miny": miny,
+        "maxx": maxx,
+        "maxy": maxy,
+    })
+    rows = result.fetchall()
 
-    feats: List[Dict[str, Any]] = []
+    features: List[Dict[str, Any]] = []
     for r in rows:
         if r.geom:
-            feats.append({
+            features.append({
                 "type": "Feature",
                 "geometry": json.loads(r.geom),
                 "properties": {
                     "ont_id": r.id,
                     "olt_id": r.olt_id,
+                    "vendor_ont_id": r.vendor_ont_id,
                     "serial": r.serial,
                 },
             })
-    return {"type": "FeatureCollection", "features": feats}
-
+    return {"type": "FeatureCollection", "features": features}
 
 # ──────────────────────── MODELOS API ───────────────────────
 class Ont(BaseModel):
     id: int
     olt_id: str
+    vendor_ont_id: str
     ptx: float | None = None
     prx: float | None = None
-
 
 class OntList(BaseModel):
     total: int
     items: List[Ont]
-
 
 class Point(BaseModel):
     time: datetime
     ptx: float | None = Field(None, example=-22.5)
     prx: float | None = Field(None, example=-26.8)
 
-
 # ──────────────────── LISTADO DE ONTs ───────────────────────
-@app.get("/onts", response_model=OntList, tags=["onts"])
+@app.get(
+    "/onts",
+    response_model=OntList,
+    tags=["onts"],
+    summary="Listado de ONTs con última potencia y vendor_ont_id"
+)
 async def list_onts(
     limit: int = Query(20, le=1000),
     offset: int = 0,
     olt_id: str | None = None,
     db: AsyncSession = Depends(get_db),
-):
-    where = "WHERE o.olt_id = :olt" if olt_id else ""
+) -> OntList:
+    where_clause = "WHERE o.olt_id = :olt" if olt_id else ""
     sql = text(f"""
         WITH last AS (
             SELECT DISTINCT ON (ont_id) ont_id, ptx, prx
               FROM ont_power
              ORDER BY ont_id, time DESC
         )
-        SELECT o.id, o.olt_id, l.ptx, l.prx
-          FROM ont AS o
-          JOIN last AS l ON l.ont_id = o.id
-          {where}
-         ORDER BY o.id
-         LIMIT :lim OFFSET :off
+        SELECT
+          o.id,
+          o.olt_id,
+          o.vendor_ont_id AS vendor_ont_id,
+          l.ptx,
+          l.prx
+        FROM ont AS o
+        JOIN last AS l ON l.ont_id = o.id
+        {where_clause}
+        ORDER BY o.id
+        LIMIT :lim OFFSET :off
     """)
-    rows = await db.execute(sql, {"lim": limit, "off": offset, "olt": olt_id})
-    items = [Ont(id=r.id, olt_id=r.olt_id, ptx=r.ptx, prx=r.prx)
-             for r in rows]
+    result = await db.execute(sql, {"lim": limit, "off": offset, "olt": olt_id})
+    rows = result.fetchall()
 
+    items = [
+        Ont(
+            id=r.id,
+            olt_id=r.olt_id,
+            vendor_ont_id=r.vendor_ont_id,
+            ptx=r.ptx,
+            prx=r.prx
+        ) for r in rows
+    ]
     total = await db.scalar(
         text("SELECT COUNT(*) FROM ont" + (" WHERE olt_id=:olt" if olt_id else "")),
-        {"olt": olt_id},
+        {"olt": olt_id}
     )
-    return OntList(total=total, items=items)
-
+    return OntList(total=total or 0, items=items)
 
 # ─────────────── SERIE TEMPORAL PTX/PRX ─────────────────────
-@app.get("/onts/{ont_id}/history",
-         response_model=list[Point],
-         tags=["onts"],
-         summary="Serie de potencias de una ONT")
+@app.get(
+    "/onts/{ont_id}/history",
+    response_model=list[Point],
+    tags=["onts"],
+    summary="Serie de potencias de una ONT"
+)
 async def ont_history(
     ont_id: int,
     hours: int = Query(24, gt=0, le=24*30),
     db: AsyncSession = Depends(get_db),
-):
+) -> list[Point]:
     since = datetime.utcnow() - timedelta(hours=hours)
     sql = text("""
         SELECT time, ptx, prx
@@ -143,8 +169,8 @@ async def ont_history(
            AND time >= :since
          ORDER BY time DESC
     """)
-    rows = await db.execute(sql, {"oid": ont_id, "since": since})
-    data = [Point(time=r.time, ptx=r.ptx, prx=r.prx) for r in rows]
-    if not data:
+    result = await db.execute(sql, {"oid": ont_id, "since": since})
+    rows = result.fetchall()
+    if not rows:
         raise HTTPException(404, "ONT sin datos")
-    return data
+    return [Point(time=r.time, ptx=r.ptx, prx=r.prx) for r in rows]

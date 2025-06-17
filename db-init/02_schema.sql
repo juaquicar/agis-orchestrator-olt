@@ -11,7 +11,7 @@
  */
 
 -- ─────────────────────────────────────────────────────────────
---  Catálogo de OLTs
+--  Catálogo de OLTs (sin cambios)
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS olt (
     id            TEXT PRIMARY KEY,                           -- p.e. 'zyxel-central'
@@ -26,39 +26,41 @@ CREATE TABLE IF NOT EXISTS olt (
 );
 
 -- ─────────────────────────────────────────────────────────────
---  Catálogo de CTOs  (opcional, pero útil para geometría)
+--  Catálogo de CTOs  (sin cambios)
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS cto (
     uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     label TEXT,
     geom  geometry(Point, 4326)           -- lat/lon WGS-84
 );
-
--- Índice espacial para búsquedas rápidas
 CREATE INDEX IF NOT EXISTS cto_geom_gix
     ON cto USING GIST (geom);
 
 -- ─────────────────────────────────────────────────────────────
---  Catálogo de ONTs
+--  Catálogo de ONTs (versión genérica)
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS ont (
-    id        BIGINT PRIMARY KEY,            -- serial/ID único del equipo
-    olt_id    TEXT    REFERENCES olt(id),
-    cto_uuid  UUID    REFERENCES cto(uuid) ON DELETE SET NULL,
-    geom      geometry(Point, 4326),         -- posición individual (NULL si hereda CTO)
-    serial    TEXT,
-    model     TEXT
+    id               BIGSERIAL   PRIMARY KEY,                -- surrogate key interno
+    olt_id           TEXT        NOT NULL
+                                REFERENCES olt(id)  ON DELETE CASCADE,
+    vendor_ont_id    TEXT        NOT NULL,                   -- ID real que devuelve la API
+    cto_uuid         UUID        REFERENCES cto(uuid) ON DELETE SET NULL,
+    geom             geometry(Point, 4326),                  -- posición individual (NULL si hereda CTO)
+    serial           TEXT,
+    model            TEXT,
+    UNIQUE (olt_id, vendor_ont_id)
 );
 
 CREATE INDEX IF NOT EXISTS ont_geom_gix
     ON ont USING GIST (geom);
 
 -- ─────────────────────────────────────────────────────────────
---  Histórico de potencias (PTX/PRX) por ONT
+--  Histórico de potencias (PTX/PRX) por ONT (sin cambios)
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS ont_power (
     time   TIMESTAMPTZ NOT NULL,
-    ont_id BIGINT       REFERENCES ont(id)
+    ont_id BIGINT       NOT NULL
+                         REFERENCES ont(id)
                          ON DELETE CASCADE,
     ptx    NUMERIC,                         -- dBm transmitido
     prx    NUMERIC,                         -- dBm recibido
@@ -66,12 +68,8 @@ CREATE TABLE IF NOT EXISTS ont_power (
 );
 
 -- Convierte en hypertable (TimescaleDB)
-SELECT create_hypertable('ont_power','time',
-                         if_not_exists => TRUE,
-                         migrate_data  => TRUE);
-
-/* ─────────────────────────────────────────────────────────────
-   𝗙𝗶𝗻  del esquema
-   Podrás añadir tablas de auditoría, continuous aggregates,
-   índices adicionales, etc., mediante futuras migraciones.
-   ───────────────────────────────────────────────────────────── */
+SELECT create_hypertable(
+    'ont_power','time',
+    if_not_exists => TRUE,
+    migrate_data  => TRUE
+);

@@ -1,11 +1,10 @@
-"""
-collector/tasks.py
-──────────────────────────────────────────────────────────────
-• Lee config/olts.yaml
-• Sincroniza la tabla `olt`
-• Programa una tarea periódica por OLT
-• Guarda potencias en ont_power (TimescaleDB/PostGIS)
-"""
+# collector/tasks.py
+# ───────────────────────────────────────────────────────────────
+# • Lee config/olts.yaml
+# • Sincroniza la tabla `olt`
+# • Programa una tarea periódica por OLT
+# • Guarda potencias en ont_power (TimescaleDB/PostGIS)
+# ───────────────────────────────────────────────────────────────
 
 from __future__ import annotations
 
@@ -40,6 +39,18 @@ CONFIG_PATH = os.getenv("OLT_CONFIG_PATH", "/config/olts.yaml")
 
 app    = Celery("collector", broker=BROKER_URL)
 engine = create_engine(DB_DSN, future=True, pool_pre_ping=True)
+
+# ── SQL para upsert+select de ont y bulk insert en ont_power ──
+_INSERT_ONT = text("""
+    INSERT INTO ont(olt_id, vendor_ont_id)
+    VALUES (:olt_id, :vendor_ont_id)
+    ON CONFLICT (olt_id, vendor_ont_id) DO NOTHING
+""")
+# (no hace falta SELECT por cada fila; lo haremos en bloque)
+_INSERT_POWER = text("""
+    INSERT INTO ont_power(time, ont_id, ptx, prx)
+    VALUES (:time, :ont_id, :ptx, :prx)
+""")
 
 # ── YAML ────────────────────────────────────────────────────
 def load_config() -> List[Dict[str, Any]]:
@@ -138,28 +149,31 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
         logging.exception("Error consultando %s: %s", cfg["id"], exc)
         return
 
-    # 2 ▸ construye filas
+    # 2 ▸ construye filas (manteniendo vendor_ont_id separado)
     now = dt.datetime.utcnow()
-    rows = []
+    rows: List[Dict[str, Any]] = []
 
     for ont in onts:
-        if isinstance(ont, dict):    # Zyxel
-            oid = ont.get("id") or ont.get("AID")
-            ptx = ont.get("tx") or ont.get("ONT Tx") or ont.get("ptx")
-            prx = ont.get("rx") or ont.get("ONT Rx") or ont.get("prx")
-            if not oid:
-                logging.debug("Descartado dict sin ID: %s", ont)
+        if isinstance(ont, dict):  # Zyxel
+            aid = ont.get("AID")
+            if not aid:
+                logging.debug("Descartado dict sin AID: %s", ont)
                 continue
+
+            ptx = ont.get("tx") or ont.get("ONT Tx") or ont.get("ptx") or 0
+            prx = ont.get("rx") or ont.get("ONT Rx") or ont.get("prx") or 0
+
             rows.append({
                 "time": now,
-                "ont_id": str(oid),
-                "ptx": float(ptx or 0),
-                "prx": float(prx or 0),
+                "vendor_ont_id": str(aid),  # <-- aquí usamos AID
+                "ptx": float(ptx),
+                "prx": float(prx),
             })
-        else:                        # Huawei (objeto)
+        else:  # Huawei (objeto)
+            vid = str(ont.id)
             rows.append({
                 "time": now,
-                "ont_id": str(ont.id),
+                "vendor_ont_id": vid,
                 "ptx": float(getattr(ont, "tx", getattr(ont, "ptx", 0))),
                 "prx": float(getattr(ont, "rx", getattr(ont, "prx", 0))),
             })
@@ -168,10 +182,37 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
         logging.warning("OLT %s devolvió 0 ONTs", cfg["id"])
         return
 
-    # 3 ▸ inserta masivamente
-    stmt = text("INSERT INTO ont_power(time, ont_id, ptx, prx) "
-                "VALUES (:time, :ont_id, :ptx, :prx)")
-    with engine.begin() as conn:                 # open + commit automático
-        conn.execute(stmt, rows)
+    # 3 ▸ upsert en ont y bulk insert en ont_power
+    with engine.begin() as conn:
+        # a) Upsert de todas las ONTs en bloque
+        unique_vids = list({r["vendor_ont_id"] for r in rows})
+        for vid in unique_vids:
+            conn.execute(
+                _INSERT_ONT,
+                {"olt_id": cfg["id"], "vendor_ont_id": vid}
+            )
 
-    logging.info("OLT %s → %d registros insertados", cfg["id"], len(rows))
+        # b) Recupera el mapping vendor_ont_id → id
+        mapping = dict(conn.execute(
+            text("""
+                SELECT vendor_ont_id, id
+                  FROM ont
+                 WHERE olt_id = :olt_id
+                   AND vendor_ont_id = ANY(:vids)
+            """),
+            {"olt_id": cfg["id"], "vids": unique_vids}
+        ).all())
+
+        # c) Prepara y lanza el bulk insert en ont_power
+        power_rows = [
+            {
+                "time":     r["time"],
+                "ont_id":   mapping[r["vendor_ont_id"]],
+                "ptx":      r["ptx"],
+                "prx":      r["prx"],
+            }
+            for r in rows
+        ]
+        conn.execute(_INSERT_POWER, power_rows)
+
+    logging.info("OLT %s → %d registros insertados", cfg["id"], len(power_rows))

@@ -34,9 +34,11 @@ print(BASE_URL, TOKEN)
 # ─────────────────────── Helpers HTTP ────────────────────────
 def api_get(path: str, params: dict | None = None):
     url = f"{BASE_URL}{path}"
+    print(url)
     hdrs = {"Authorization": f"Bearer {TOKEN}"} if TOKEN else {}
     resp = requests.get(url, params=params, headers=hdrs, timeout=10)
     resp.raise_for_status()
+    print(resp.json())
     return resp.json()
 
 
