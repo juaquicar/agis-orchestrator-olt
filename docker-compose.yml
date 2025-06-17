@@ -1,0 +1,53 @@
+services:
+  db:
+    # ✅ opción recomendada (incluye PostGIS y Toolkit)
+    image: timescale/timescaledb-ha:pg16          # alias al último patch 16.x
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      retries: 5
+    ports:
+      - "5433:5432" # DEbe ser 5432:5432
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6378:6379" # Debe ser 6379:6379, pero ya tengo redis en mi maquina, hay que sacarlo por fuera
+
+  api:
+    build: ./api
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8000:8000"
+
+  collector:
+    build: ./collector
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./admin-ui:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro   # ← aquí
+    depends_on:
+      - api
+    ports:
+      - "8888:80" # DEbe ser 80:80
+volumes:
+  dbdata:

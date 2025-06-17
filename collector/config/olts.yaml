@@ -1,0 +1,24 @@
+# config/olts.yaml   (ejemplo completo)
+defaults:
+  poll_interval: 300            # 5 min
+  prompt: ">"                   # valor genérico; cada OLT puede sobre-escribirlo
+
+olts:
+  - id: zyxel-central
+    vendor: zyxel
+    host: 152.170.74.208
+    port: 2300
+    username: admin
+    password: 1234
+    prompt: "OLT1408A#"                 # Zyxel suele terminar con >
+    description: "Zyxel – Central"
+    poll_interval: 120
+
+#  - id: huawei-nodo-sur
+#    vendor: huawei
+#    host: 192.168.88.25
+#    port: 23
+#    username: root
+#    password: admin
+#    prompt: "MA5600T>"          # prompt típico de MA5600
+#    poll_interval: 120
