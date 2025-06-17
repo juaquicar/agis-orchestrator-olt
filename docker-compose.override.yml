@@ -1,0 +1,21 @@
+services:
+  api:
+    volumes:
+      - ./api:/app/api
+    command: >
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  collector:
+    command: >
+      watchmedo auto-restart
+      --directory=/app
+      --pattern=*.py
+      -- celery -A tasks worker -B --loglevel=info
+    environment:
+      - OLT_CONFIG_PATH=/config/olts.yaml
+    volumes:
+      - ./collector:/app                       # monta todo el código
+      - ./collector/config/olts.yaml:/config/olts.yaml:ro  # YAML de OLTs
+
+  redis:
+    ports: []                                  # sin exponer 6379 al host
