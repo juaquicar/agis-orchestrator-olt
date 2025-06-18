@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import logging
 import datetime as dt
+import json
 from typing import Any, Dict, List
 
 import yaml
@@ -33,23 +34,23 @@ logging.basicConfig(
 )
 
 BROKER_URL  = os.getenv("REDIS_URL", "redis://redis:6379/0")
-DB_DSN      = os.getenv("DB_DSN",
-                        "postgresql://postgres:changeme@db:5432/olt")
+DB_DSN      = os.getenv("DB_DSN", "postgresql://postgres:changeme@db:5432/olt")
 CONFIG_PATH = os.getenv("OLT_CONFIG_PATH", "/config/olts.yaml")
 
 app    = Celery("collector", broker=BROKER_URL)
 engine = create_engine(DB_DSN, future=True, pool_pre_ping=True)
 
 # ── SQL para upsert+select de ont y bulk insert en ont_power ──
-_INSERT_ONT = text("""
-    INSERT INTO ont(olt_id, vendor_ont_id)
-    VALUES (:olt_id, :vendor_ont_id)
-    ON CONFLICT (olt_id, vendor_ont_id) DO NOTHING
-""")
-# (no hace falta SELECT por cada fila; lo haremos en bloque)
 _INSERT_POWER = text("""
     INSERT INTO ont_power(time, ont_id, ptx, prx)
     VALUES (:time, :ont_id, :ptx, :prx)
+""")
+
+_UPSERT_ONT = text("""
+    INSERT INTO ont(olt_id, vendor_ont_id, props)
+    VALUES (:olt_id, :vendor_ont_id, CAST(:props AS jsonb))
+    ON CONFLICT (olt_id, vendor_ont_id)
+      DO UPDATE SET props = EXCLUDED.props
 """)
 
 # ── YAML ────────────────────────────────────────────────────
@@ -65,15 +66,14 @@ def load_config() -> List[Dict[str, Any]]:
         out.append(cfg)
     return out
 
-
 OLTS = load_config()
 
 # ── Sync tabla olt ──────────────────────────────────────────
 _INSERT_OLT = text("""
-    INSERT INTO olt(id,vendor,host,port,username,password,
-                    poll_interval,prompt,description)
-    VALUES (:id,:vendor,:host,:port,:username,:password,
-            :pi,:prompt,:desc)
+    INSERT INTO olt(id, vendor, host, port, username, password,
+                    poll_interval, prompt, description)
+    VALUES (:id, :vendor, :host, :port, :username, :password,
+            :pi, :prompt, :desc)
     ON CONFLICT (id) DO UPDATE SET
         host=:host, port=:port, username=:username, password=:password,
         poll_interval=:pi, prompt=:prompt, description=:desc
@@ -83,10 +83,15 @@ def sync_db() -> None:
     with Session(engine) as db:
         for c in OLTS:
             db.execute(_INSERT_OLT, {
-                "id": c["id"], "vendor": c["vendor"], "host": c["host"],
-                "port": c["port"], "username": c["username"],
-                "password": c["password"], "pi": c["poll_interval"],
-                "prompt": c["prompt"], "desc": c.get("description"),
+                "id": c["id"],
+                "vendor": c["vendor"],
+                "host": c["host"],
+                "port": c["port"],
+                "username": c["username"],
+                "password": c["password"],
+                "pi": c["poll_interval"],
+                "prompt": c["prompt"],
+                "desc": c.get("description"),
             })
         db.commit()
 
@@ -149,7 +154,7 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
         logging.exception("Error consultando %s: %s", cfg["id"], exc)
         return
 
-    # 2 ▸ construye filas (manteniendo vendor_ont_id separado)
+    # 2 ▸ construye filas con metadatos y potencias
     now = dt.datetime.utcnow()
     rows: List[Dict[str, Any]] = []
 
@@ -159,60 +164,77 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
             if not aid:
                 logging.debug("Descartado dict sin AID: %s", ont)
                 continue
-
-            ptx = ont.get("tx") or ont.get("ONT Tx") or ont.get("ptx") or 0
-            prx = ont.get("rx") or ont.get("ONT Rx") or ont.get("prx") or 0
-
-            rows.append({
-                "time": now,
-                "vendor_ont_id": str(aid),  # <-- aquí usamos AID
-                "ptx": float(ptx),
-                "prx": float(prx),
-            })
-        else:  # Huawei (objeto)
+            meta = {
+                "AID": aid,
+                "SN": ont.get("SN"),
+                "Status": ont.get("Status"),
+                "Template-ID": ont.get("Template-ID"),
+                "FW Version": ont.get("FW Version"),
+                "Model": ont.get("Model"),
+                "Distance": ont.get("Distance"),
+                "Description": ont.get("Description"),
+            }
+            ptx = float(ont.get("ONT Tx") or ont.get("tx") or 0)
+            prx = float(ont.get("ONT Rx") or ont.get("rx") or 0)
+            vid = aid
+        else:  # Huawei
             vid = str(ont.id)
-            rows.append({
-                "time": now,
-                "vendor_ont_id": vid,
-                "ptx": float(getattr(ont, "tx", getattr(ont, "ptx", 0))),
-                "prx": float(getattr(ont, "rx", getattr(ont, "prx", 0))),
-            })
+            meta = {
+                "id":           vid,
+                "schema_fsp":   getattr(ont, "schema_fsp", None),
+                "sn":           getattr(ont, "sn", None),
+                "control_flag": getattr(ont, "control_flag", None),
+                "run_state":    getattr(ont, "run_state", None),
+                "config_state": getattr(ont, "config_state", None),
+                "match_state":  getattr(ont, "match_state", None),
+                "protect_side": getattr(ont, "protect_side", None),
+                "description":  getattr(ont, "description", None),
+            }
+            ptx = float(getattr(ont, "tx", getattr(ont, "ptx", 0)))
+            prx = float(getattr(ont, "rx", getattr(ont, "prx", 0)))
+
+        rows.append({
+            "time":          now,
+            "vendor_ont_id": vid,
+            "ptx":           ptx,
+            "prx":           prx,
+            "props":         json.dumps(meta),
+        })
 
     if not rows:
         logging.warning("OLT %s devolvió 0 ONTs", cfg["id"])
         return
 
-    # 3 ▸ upsert en ont y bulk insert en ont_power
+    # 3 ▸ upsert en ont (con props) y bulk insert en ont_power
     with engine.begin() as conn:
-        # a) Upsert de todas las ONTs en bloque
-        unique_vids = list({r["vendor_ont_id"] for r in rows})
-        for vid in unique_vids:
+        # a) Upsert de todas las ONTs con sus props
+        seen: Dict[str, str] = {}
+        for r in rows:
+            seen[r["vendor_ont_id"]] = r["props"]
+        for vid, props in seen.items():
             conn.execute(
-                _INSERT_ONT,
-                {"olt_id": cfg["id"], "vendor_ont_id": vid}
+                _UPSERT_ONT,
+                {"olt_id": cfg["id"], "vendor_ont_id": vid, "props": props}
             )
-
-        # b) Recupera el mapping vendor_ont_id → id
+        # b) Recupera mapping vendor_ont_id → id
+        unique_vids = list(seen.keys())
         mapping = dict(conn.execute(
             text("""
                 SELECT vendor_ont_id, id
                   FROM ont
                  WHERE olt_id = :olt_id
                    AND vendor_ont_id = ANY(:vids)
-            """),
-            {"olt_id": cfg["id"], "vids": unique_vids}
+            """), {"olt_id": cfg["id"], "vids": unique_vids}
         ).all())
-
-        # c) Prepara y lanza el bulk insert en ont_power
+        # c) Inserta potencias
         power_rows = [
             {
-                "time":     r["time"],
-                "ont_id":   mapping[r["vendor_ont_id"]],
-                "ptx":      r["ptx"],
-                "prx":      r["prx"],
-            }
-            for r in rows
+                "time":   r["time"],
+                "ont_id": mapping[r["vendor_ont_id"]],
+                "ptx":    r["ptx"],
+                "prx":    r["prx"]
+            } for r in rows
         ]
         conn.execute(_INSERT_POWER, power_rows)
 
-    logging.info("OLT %s → %d registros insertados", cfg["id"], len(power_rows))
+    logging.info("OLT %s → %d registros insertados", cfg["id"], len(rows))

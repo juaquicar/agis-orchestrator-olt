@@ -1,3 +1,5 @@
+
+# main.py (FastAPI)
 from __future__ import annotations
 
 import json
@@ -9,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
-from .database import get_db  # tu helper async_session
+from .database import get_db  # helper para AsyncSession
 
 app = FastAPI(
     title="OLT Orchestrator API",
@@ -59,12 +61,7 @@ async def geo(
           ST_MakeEnvelope(:minx, :miny, :maxx, :maxy, 4326)
         )
     """)
-    result = await db.execute(sql, {
-        "minx": minx,
-        "miny": miny,
-        "maxx": maxx,
-        "maxy": maxy,
-    })
+    result = await db.execute(sql, {"minx": minx, "miny": miny, "maxx": maxx, "maxy": maxy})
     rows = result.fetchall()
 
     features: List[Dict[str, Any]] = []
@@ -89,6 +86,10 @@ class Ont(BaseModel):
     vendor_ont_id: str
     ptx: float | None = None
     prx: float | None = None
+    last_read: datetime = Field(..., description="Timestamp de la última lectura")
+    props: Dict[str, Any] = Field(
+        ..., description="Metadatos originales de la ONT (status, SN, modelo, …)"
+    )
 
 class OntList(BaseModel):
     total: int
@@ -104,7 +105,7 @@ class Point(BaseModel):
     "/onts",
     response_model=OntList,
     tags=["onts"],
-    summary="Listado de ONTs con última potencia y vendor_ont_id"
+    summary="Listado de ONTs con última potencia, timestamp y props"
 )
 async def list_onts(
     limit: int = Query(20, le=1000),
@@ -115,7 +116,7 @@ async def list_onts(
     where_clause = "WHERE o.olt_id = :olt" if olt_id else ""
     sql = text(f"""
         WITH last AS (
-            SELECT DISTINCT ON (ont_id) ont_id, ptx, prx
+            SELECT DISTINCT ON (ont_id) ont_id, time, ptx, prx
               FROM ont_power
              ORDER BY ont_id, time DESC
         )
@@ -124,7 +125,9 @@ async def list_onts(
           o.olt_id,
           o.vendor_ont_id AS vendor_ont_id,
           l.ptx,
-          l.prx
+          l.prx,
+          l.time   AS last_read,
+          o.props
         FROM ont AS o
         JOIN last AS l ON l.ont_id = o.id
         {where_clause}
@@ -140,7 +143,9 @@ async def list_onts(
             olt_id=r.olt_id,
             vendor_ont_id=r.vendor_ont_id,
             ptx=r.ptx,
-            prx=r.prx
+            prx=r.prx,
+            last_read=r.last_read,
+            props=r.props,
         ) for r in rows
     ]
     total = await db.scalar(
