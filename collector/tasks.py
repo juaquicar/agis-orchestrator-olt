@@ -42,15 +42,17 @@ engine = create_engine(DB_DSN, future=True, pool_pre_ping=True)
 
 # ── SQL para upsert+select de ont y bulk insert en ont_power ──
 _INSERT_POWER = text("""
-    INSERT INTO ont_power(time, ont_id, ptx, prx)
-    VALUES (:time, :ont_id, :ptx, :prx)
+    INSERT INTO ont_power(time, ont_id, ptx, prx, status)
+    VALUES (:time, :ont_id, :ptx, :prx, :status)
 """)
 
 _UPSERT_ONT = text("""
-    INSERT INTO ont(olt_id, vendor_ont_id, props)
-    VALUES (:olt_id, :vendor_ont_id, CAST(:props AS jsonb))
+    INSERT INTO ont(olt_id, vendor_ont_id, status, props)
+    VALUES (:olt_id, :vendor_ont_id, :status, CAST(:props AS jsonb))
     ON CONFLICT (olt_id, vendor_ont_id)
-      DO UPDATE SET props = EXCLUDED.props
+      DO UPDATE SET 
+        status = EXCLUDED.status,
+        props = EXCLUDED.props
 """)
 
 # ── YAML ────────────────────────────────────────────────────
@@ -146,7 +148,15 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
 
     # 1 ▸ consulta ONTs
     try:
-        onts = client.get_all_onts() if cfg["vendor"] == "zyxel" else client.get_onts()
+        if cfg["vendor"] == "zyxel":
+            onts = client.get_all_onts()
+        elif cfg["vendor"] == "huawei":
+            onts = client.get_onts()
+        else:
+            onts = []
+            logging.warning("Vendor %s no localizado", cfg["vendor"])
+            return
+
     except UserBusyError:
         logging.warning("OLT %s ocupado, se reintentará", cfg["id"])
         return
@@ -176,9 +186,10 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
             }
             ptx = float(ont.get("ONT Tx") or ont.get("tx") or 0)
             prx = float(ont.get("ONT Rx") or ont.get("rx") or 0)
+            status = ont.get("Status", None)
             vid = aid
         else:  # Huawei
-            vid = str(ont.id)
+            vid = f"{ont.schema_fsp}/{ont.id}"
             meta = {
                 "id":           vid,
                 "schema_fsp":   getattr(ont, "schema_fsp", None),
@@ -192,12 +203,14 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
             }
             ptx = float(getattr(ont, "tx", getattr(ont, "ptx", 0)))
             prx = float(getattr(ont, "rx", getattr(ont, "prx", 0)))
+            status = ont.get("run_state", None)
 
         rows.append({
             "time":          now,
             "vendor_ont_id": vid,
             "ptx":           ptx,
             "prx":           prx,
+            "status":         status,
             "props":         json.dumps(meta),
         })
 
@@ -214,7 +227,7 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
         for vid, props in seen.items():
             conn.execute(
                 _UPSERT_ONT,
-                {"olt_id": cfg["id"], "vendor_ont_id": vid, "props": props}
+                {"olt_id": cfg["id"], "vendor_ont_id": vid, "status": status, "props": props}
             )
         # b) Recupera mapping vendor_ont_id → id
         unique_vids = list(seen.keys())
@@ -232,7 +245,8 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
                 "time":   r["time"],
                 "ont_id": mapping[r["vendor_ont_id"]],
                 "ptx":    r["ptx"],
-                "prx":    r["prx"]
+                "prx":    r["prx"],
+                "status": r["status"],
             } for r in rows
         ]
         conn.execute(_INSERT_POWER, power_rows)

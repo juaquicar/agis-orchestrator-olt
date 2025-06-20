@@ -21,7 +21,7 @@ app = FastAPI(
 # ───────────────────────── PING ────────────────────────────
 @app.get("/health", tags=["misc"])
 async def health() -> Dict[str, str]:
-    return {"status": "ok ok"}
+    return {"status": "ok"}
 
 # ───────────────────────── GEOJSON ─────────────────────────
 def parse_bbox(bbox: str) -> List[float]:
@@ -86,6 +86,7 @@ class Ont(BaseModel):
     vendor_ont_id: str
     ptx: float | None = None
     prx: float | None = None
+    status: str
     last_read: datetime = Field(..., description="Timestamp de la última lectura")
     props: Dict[str, Any] = Field(
         ..., description="Metadatos originales de la ONT (status, SN, modelo, …)"
@@ -99,6 +100,7 @@ class Point(BaseModel):
     time: datetime
     ptx: float | None = Field(None, example=-22.5)
     prx: float | None = Field(None, example=-26.8)
+    status: str | None =  Field(None, example='online')
 
 # ──────────────────── LISTADO DE ONTs ───────────────────────
 @app.get(
@@ -116,7 +118,7 @@ async def list_onts(
     where_clause = "WHERE o.olt_id = :olt" if olt_id else ""
     sql = text(f"""
         WITH last AS (
-            SELECT DISTINCT ON (ont_id) ont_id, time, ptx, prx
+            SELECT DISTINCT ON (ont_id) ont_id, time, ptx, prx, status
               FROM ont_power
              ORDER BY ont_id, time DESC
         )
@@ -124,6 +126,7 @@ async def list_onts(
           o.id,
           o.olt_id,
           o.vendor_ont_id AS vendor_ont_id,
+          o.status,
           l.ptx,
           l.prx,
           l.time   AS last_read,
@@ -144,6 +147,7 @@ async def list_onts(
             vendor_ont_id=r.vendor_ont_id,
             ptx=r.ptx,
             prx=r.prx,
+            status=r.status,
             last_read=r.last_read,
             props=r.props,
         ) for r in rows
@@ -168,7 +172,7 @@ async def ont_history(
 ) -> list[Point]:
     since = datetime.utcnow() - timedelta(hours=hours)
     sql = text("""
-        SELECT time, ptx, prx
+        SELECT time, ptx, prx, status
           FROM ont_power
          WHERE ont_id = :oid
            AND time >= :since
@@ -178,4 +182,4 @@ async def ont_history(
     rows = result.fetchall()
     if not rows:
         raise HTTPException(404, "ONT sin datos")
-    return [Point(time=r.time, ptx=r.ptx, prx=r.prx) for r in rows]
+    return [Point(time=r.time, ptx=r.ptx, prx=r.prx, status=r.status) for r in rows]

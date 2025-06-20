@@ -77,8 +77,19 @@ volumes:
 
   ```bash
   docker-compose --profile production up --build
-
   ```
+
+* ** Apagar
+* 
+```bash
+docker compose stop
+ ``` 
+
+Si quiero reiniciar todo
+
+```bash
+docker compose down -v
+ ``` 
 
   > Al especificar explícitamente `-f docker-compose.yml`, **no** se incluirá el `override`.
 

@@ -4,7 +4,7 @@ defaults:
   prompt: ">"                   # valor genérico; cada OLT puede sobre-escribirlo
 
 olts:
-  - id: zyxel-central
+  - id: zyxel-TEST
     vendor: zyxel
     host: 152.170.74.208
     port: 2300
@@ -12,10 +12,10 @@ olts:
     password: 1234
     prompt: "OLT1408A#"                 # Zyxel suele terminar con >
     description: "Zyxel – Central"
-    poll_interval: 30
+    poll_interval: 600
 
 #  - id: huawei-nodo-sur
-#    vendor: huawei
+#    vendor: MA56XXT
 #    host: 192.168.88.25
 #    port: 23
 #    username: root
