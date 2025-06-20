@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS ont (
     olt_id           TEXT        NOT NULL
                                 REFERENCES olt(id)  ON DELETE CASCADE,
     vendor_ont_id    TEXT        NOT NULL,                   -- ID real que devuelve la API
-    cto_uuid         UUID        REFERENCES cto(uuid) ON DELETE SET NULL,
+    cto_uuid         TEXT        NULL,
     geom             geometry(Point, 4326),                  -- posición individual (NULL si hereda CTO)
     serial           TEXT,
     model            TEXT,

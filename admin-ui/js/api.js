@@ -1,13 +1,38 @@
-
-class ApiClient{
-  constructor(base, token){
+// js/api.js
+class ApiClient {
+  constructor(base) {
     this.base = base;
-    this.token = token;
   }
-  _headers(){
-    return { 'Content-Type':'application/json', 'Authorization':`Bearer ${this.token}`};
+
+  _headers() {
+    return {
+      'Content-Type': 'application/json'
+    };
   }
-  get(path){ return fetch(this.base+path, {headers:this._headers()}).then(r=>r.json()); }
-  post(path, body){ return fetch(this.base+path,{method:'POST',headers:this._headers(),body:JSON.stringify(body)}).then(r=>r.json());}
-  put(path, body){ return fetch(this.base+path,{method:'PUT',headers:this._headers(),body:JSON.stringify(body)}).then(r=>r.json());}
+
+  async get(path) {
+    const res = await fetch(this.base + path, {
+      headers: this._headers()
+    });
+    if (!res.ok) {
+      throw new Error(`GET ${path} failed: ${res.status} ${res.statusText}`);
+    }
+    return await res.json();
+  }
+
+  async patch(path, body) {
+    const res = await fetch(this.base + path, {
+      method: 'PATCH',
+      headers: this._headers(),
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      throw new Error(`PATCH ${path} failed: ${res.status} ${res.statusText}`);
+    }
+    return await res.json();
+  }
+
+  // Si necesitas más métodos (POST, PUT…), añádelos aquí
 }
+
+export const API = new ApiClient('/api');

@@ -183,3 +183,38 @@ async def ont_history(
     if not rows:
         raise HTTPException(404, "ONT sin datos")
     return [Point(time=r.time, ptx=r.ptx, prx=r.prx, status=r.status) for r in rows]
+
+
+# ─────────────── UBICAR Y UUID POR ADMIN-UI ─────────────────────
+from fastapi import Path, Body
+
+class OntPatch(BaseModel):
+    cto_uuid: str | None = None
+    lon: float | None = None
+    lat: float | None = None
+
+@app.patch("/onts/{ont_id}", tags=["onts"])
+async def patch_ont(
+    ont_id: int = Path(..., description="ID interno de la ONT"),
+    patch: OntPatch = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    updates = []
+    params = {"id": ont_id}
+    if patch.cto_uuid is not None:
+        updates.append("cto_uuid = :cto_uuid")
+        params["cto_uuid"] = str(patch.cto_uuid)
+        # al asociar CTO, podrías querer limpiar geom en ont:
+        updates.append("geom = NULL")
+    if patch.lon is not None and patch.lat is not None:
+        updates.append("geom = ST_SetSRID(ST_Point(:lon, :lat),4326)")
+        params["lon"] = patch.lon
+        params["lat"] = patch.lat
+
+    if not updates:
+        raise HTTPException(400, "Nada que actualizar")
+
+    sql = text(f"UPDATE ont SET {', '.join(updates)} WHERE id = :id")
+    await db.execute(sql, params)
+    await db.commit()
+    return {"ok": True}

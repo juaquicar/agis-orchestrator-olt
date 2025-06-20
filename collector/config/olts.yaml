@@ -10,9 +10,9 @@ olts:
     port: 2300
     username: admin
     password: 1234
-    prompt: "OLT1408A#"                 # Zyxel suele terminar con >
+    prompt: "OLT1408A#"
     description: "Zyxel – TEST"
-    poll_interval: 600
+    poll_interval: 20
 
 #  - id: huawei-TEST
 #    vendor: huawei
@@ -20,5 +20,5 @@ olts:
 #    port: 23
 #    username: root
 #    password: admin
-#    prompt: "MA5600T>"          # prompt típico de MA5600
+#    prompt: "MA5600T>"
 #    poll_interval: 120
