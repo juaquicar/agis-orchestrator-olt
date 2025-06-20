@@ -1,120 +1,112 @@
 // js/app.js
 import { API } from './api.js';
 
+let selectedOntId = null;
+
 // 1. Inicializar el mapa centrado en España
 const map = L.map('map').setView([40.4168, -3.7038], 6);
 
-// 2. Capa base de OpenStreetMap
+// 2. Capa base OpenStreetMap
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
   attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-// 3. Crear MarkerClusterGroup para agrupar ONTs
+// 3. MarkerClusterGroup para ONTs ubicados
 const cluster = L.markerClusterGroup();
 map.addLayer(cluster);
 
-// 4. Función para cargar y dibujar las ONTs
-async function loadONTs() {
+// Referencia al <ul> de ONTs sin ubicación
+const unlocatedList = document.getElementById('unlocated-list');
+
+// 4. Función para cargar ONTs ubicados (en el mapa) y no ubicados (en la lista)
+async function loadData() {
   try {
-    const data = await API.get('/onts');
-    console.log('Respuesta /api/onts:', data);
+    // 4.1. BBOX del viewport actual
+    const b = map.getBounds();
+    const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(',');
+
+    // 4.2. Cargar y dibujar ONTs ubicados
+    const geoResp = await API.get('/geo', { bbox });
     cluster.clearLayers();
+    const locatedIds = [];
 
-    // Mapear data.items a GeoJSON
-    const features = data.items.map(f => ({
-      type: 'Feature',
-      geometry: f.geom || { type: 'Point', coordinates: [0, 0] },
-      properties: {
-        ont_id: f.id,
-        vendor_ont_id: f.vendor_ont_id,
-        cto_uuid: f.cto_uuid
-      }
-    }));
+    geoResp.features.forEach(feature => {
+      const [lng, lat] = feature.geometry.coordinates;
+      const { ont_id, vendor_ont_id } = feature.properties;
+      locatedIds.push(ont_id);
 
-    const geojson = {
-      type: 'FeatureCollection',
-      features
-    };
+      // marcador arrastrable
+      const marker = L.marker([lat, lng], { draggable: true });
+      marker.on('dragend', async (e) => {
+        const { lat, lng } = e.target.getLatLng();
+        try {
+          await API.patch(`/onts/${ont_id}`, { lat, lon: lng });
+          loadData();
+        } catch {
+          alert('Error al actualizar ubicación');
+        }
+      });
 
-    L.geoJSON(geojson, {
-      pointToLayer: (_, latlng) => L.marker(latlng),
-      onEachFeature: (feature, layer) => {
-        const { ont_id, cto_uuid } = feature.properties;
-        const ctoText = cto_uuid ? `CTO: ${cto_uuid}` : 'CTO sin asignar';
-        layer.bindPopup(`
-          <b>ONT ${ont_id}</b><br/>
-          ${ctoText}<br/>
-          <button onclick="assignCto('${ont_id}')">
-            Asignar/Quitar CTO
-          </button>
-        `);
-      }
-    }).addTo(cluster);
+      // popup con vendor_ont_id + botón asignar CTO
+      marker.bindPopup(`
+        <b>ONT: ${vendor_ont_id}</b><br/>
+        <button onclick="assignCto(${ont_id})">Asignar/Quitar CTO</button>
+      `);
+
+      cluster.addLayer(marker);
+    });
+
+    // 4.3. Cargar listado completo y filtrar los no ubicados
+    const listResp = await API.get('/onts');
+    const unlocated = listResp.items.filter(item => !locatedIds.includes(item.id));
+
+    // 4.4. Pintar la lista en el sidebar
+    unlocatedList.innerHTML = '';
+    unlocated.forEach(item => {
+      const li = document.createElement('li');
+      li.textContent = item.vendor_ont_id;
+      li.dataset.id = item.id;
+      if (item.id == selectedOntId) li.classList.add('selected');
+      li.addEventListener('click', () => {
+        selectedOntId = item.id;
+        unlocatedList.querySelectorAll('li').forEach(el => el.classList.remove('selected'));
+        li.classList.add('selected');
+      });
+      unlocatedList.appendChild(li);
+    });
 
   } catch (err) {
-    console.error('Error cargando ONTs:', err);
-    alert('No se pudieron cargar las ONTs. Revisa la consola.');
+    console.error(err);
+    alert('No se pudieron cargar los ONTs.');
   }
 }
 
-// 5. Añadir controles de Leaflet.Draw
-const drawControl = new L.Control.Draw({
-  draw: {
-    marker: true,
-    polygon: false,
-    polyline: false,
-    rectangle: false,
-    circle: false
-  },
-  edit: { featureGroup: cluster }
-});
-map.addControl(drawControl);
-
-// Manejar creación de nuevos marcadores
-map.on(L.Draw.Event.CREATED, async (e) => {
-  const { lat, lng } = e.layer.getLatLng();
-  const ontId = prompt('Introduce el ID interno de la ONT:');
-  if (!ontId) return;
-
+// 5. Click en el mapa para ubicar la ONT seleccionada
+map.on('click', async (e) => {
+  if (!selectedOntId) return;
+  const { lat, lng } = e.latlng;
   try {
-    await API.patch(`/onts/${ontId}`, { lat, lon: lng });
-    alert('Posición guardada');
-    loadONTs();
-  } catch (err) {
-    console.error(err);
-    alert('Error al guardar posición');
+    await API.patch(`/onts/${selectedOntId}`, { lat, lon: lng });
+    selectedOntId = null;
+    loadData();
+  } catch {
+    alert('Error al ubicar ONT');
   }
-});
-
-// Manejar movimiento/edición de marcadores
-map.on(L.Draw.Event.EDITED, async (e) => {
-  for (const layer of Object.values(e.layers._layers)) {
-    const { ont_id } = layer.feature.properties;
-    const { lat, lng } = layer.getLatLng();
-    try {
-      await API.patch(`/onts/${ont_id}`, { lat, lon: lng });
-    } catch (err) {
-      console.error(`Error moviendo ONT ${ont_id}:`, err);
-    }
-  }
-  loadONTs();
 });
 
 // 6. Función global para asignar o quitar CTO
 window.assignCto = async function(ontId) {
   const cto = prompt('UUID del CTO (vacío para quitar):');
   if (cto === null) return;
-
   try {
     await API.patch(`/onts/${ontId}`, { cto_uuid: cto || null });
-    alert('CTO actualizado');
-    loadONTs();
-  } catch (err) {
-    console.error(err);
+    loadData();
+  } catch {
     alert('Error al actualizar CTO');
   }
 };
 
-// 7. Carga inicial de ONTs al arrancar la página
-loadONTs();
+// 7. Recargar al mover o hacer zoom, y carga inicial
+map.on('moveend', loadData);
+loadData();

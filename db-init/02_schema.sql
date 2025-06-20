@@ -25,16 +25,6 @@ CREATE TABLE IF NOT EXISTS olt (
     description   TEXT
 );
 
--- ─────────────────────────────────────────────────────────────
---  Catálogo de CTOs  (sin cambios)
--- ─────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS cto (
-    uuid UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    label TEXT,
-    geom  geometry(Point, 4326)           -- lat/lon WGS-84
-);
-CREATE INDEX IF NOT EXISTS cto_geom_gix
-    ON cto USING GIST (geom);
 
 -- ─────────────────────────────────────────────────────────────
 --  Catálogo de ONTs (versión genérica)

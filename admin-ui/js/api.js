@@ -5,15 +5,15 @@ class ApiClient {
   }
 
   _headers() {
-    return {
-      'Content-Type': 'application/json'
-    };
+    return { 'Content-Type': 'application/json' };
   }
 
-  async get(path) {
-    const res = await fetch(this.base + path, {
-      headers: this._headers()
-    });
+  // Ahora acepta opcionalmente un objeto params para query string
+  async get(path, params = {}) {
+    let url = this.base + path;
+    const q = new URLSearchParams(params).toString();
+    if (q) url += `?${q}`;
+    const res = await fetch(url, { headers: this._headers() });
     if (!res.ok) {
       throw new Error(`GET ${path} failed: ${res.status} ${res.statusText}`);
     }
@@ -24,15 +24,13 @@ class ApiClient {
     const res = await fetch(this.base + path, {
       method: 'PATCH',
       headers: this._headers(),
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       throw new Error(`PATCH ${path} failed: ${res.status} ${res.statusText}`);
     }
     return await res.json();
   }
-
-  // Si necesitas más métodos (POST, PUT…), añádelos aquí
 }
 
 export const API = new ApiClient('/api');

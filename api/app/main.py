@@ -53,12 +53,13 @@ async def geo(
           o.olt_id,
           o.vendor_ont_id AS vendor_ont_id,
           o.serial,
-          ST_AsGeoJSON(COALESCE(o.geom, c.geom)) AS geom
+          ST_AsGeoJSON(o.geom) AS geom
         FROM ont AS o
-        LEFT JOIN cto AS c ON o.cto_uuid = c.uuid
-        WHERE ST_Intersects(
-          COALESCE(o.geom, c.geom),
-          ST_MakeEnvelope(:minx, :miny, :maxx, :maxy, 4326)
+        WHERE 
+            o.geom IS NOT NULL
+            AND ST_Intersects(
+            o.geom,
+           ST_MakeEnvelope(:minx, :miny, :maxx, :maxy, 4326)
         )
     """)
     result = await db.execute(sql, {"minx": minx, "miny": miny, "maxx": maxx, "maxy": maxy})
