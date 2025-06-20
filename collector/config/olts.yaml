@@ -11,11 +11,11 @@ olts:
     username: admin
     password: 1234
     prompt: "OLT1408A#"                 # Zyxel suele terminar con >
-    description: "Zyxel – Central"
+    description: "Zyxel – TEST"
     poll_interval: 600
 
-#  - id: huawei-nodo-sur
-#    vendor: MA56XXT
+#  - id: huawei-TEST
+#    vendor: huawei
 #    host: 192.168.88.25
 #    port: 23
 #    username: root
