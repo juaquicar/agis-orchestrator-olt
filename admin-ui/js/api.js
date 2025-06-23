@@ -34,3 +34,11 @@ class ApiClient {
 }
 
 export const API = new ApiClient('/api');
+
+
+export function getCTOList() {
+  return API.get('/ctos/list');
+}
+export function getCTOGeoJSON() {
+  return API.get('/ctos/geojson');
+}

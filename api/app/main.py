@@ -13,10 +13,24 @@ from sqlalchemy import text
 
 from .database import get_db  # helper para AsyncSession
 
+
+from fastapi.middleware.cors import CORSMiddleware
+
+
+
 app = FastAPI(
     title="OLT Orchestrator API",
     version="0.1.0",
 )
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # ───────────────────────── PING ────────────────────────────
 @app.get("/health", tags=["misc"])
@@ -53,6 +67,9 @@ async def geo(
           o.olt_id,
           o.vendor_ont_id AS vendor_ont_id,
           o.serial,
+          o.cto_uuid,
+          ST_Y(o.geom) AS lat,
+          ST_X(o.geom) AS lon,
           ST_AsGeoJSON(o.geom) AS geom
         FROM ont AS o
         WHERE 
@@ -88,6 +105,9 @@ class Ont(BaseModel):
     ptx: float | None = None
     prx: float | None = None
     status: str
+    cto_uuid: str | None = None
+    lat: float | None = None
+    lon: float | None = None
     last_read: datetime = Field(..., description="Timestamp de la última lectura")
     props: Dict[str, Any] = Field(
         ..., description="Metadatos originales de la ONT (status, SN, modelo, …)"
@@ -128,6 +148,9 @@ async def list_onts(
           o.olt_id,
           o.vendor_ont_id AS vendor_ont_id,
           o.status,
+          o.cto_uuid,
+          ST_Y(o.geom) AS lat,
+          ST_X(o.geom) AS lon,
           l.ptx,
           l.prx,
           l.time   AS last_read,
@@ -149,6 +172,9 @@ async def list_onts(
             ptx=r.ptx,
             prx=r.prx,
             status=r.status,
+            lat=r.lat,
+            lon=r.lon,
+            cto_uuid=r.cto_uuid,
             last_read=r.last_read,
             props=r.props,
         ) for r in rows
@@ -200,22 +226,48 @@ async def patch_ont(
     patch: OntPatch = Body(...),
     db: AsyncSession = Depends(get_db),
 ):
+    # Solo consideramos los campos realmente enviados
+    patch_data = patch.dict(exclude_unset=True)
     updates = []
     params = {"id": ont_id}
-    if patch.cto_uuid is not None:
+
+    # Actualizar cto_uuid (incluso si es None)
+    if "cto_uuid" in patch_data:
         updates.append("cto_uuid = :cto_uuid")
-        params["cto_uuid"] = str(patch.cto_uuid)
-        # al asociar CTO, podrías querer limpiar geom en ont:
-        updates.append("geom = NULL")
-    if patch.lon is not None and patch.lat is not None:
+        params["cto_uuid"] = patch_data["cto_uuid"]
+
+    # Actualizar geom si vienen lat y lon
+    if "lon" in patch_data and "lat" in patch_data:
         updates.append("geom = ST_SetSRID(ST_Point(:lon, :lat),4326)")
-        params["lon"] = patch.lon
-        params["lat"] = patch.lat
+        params["lon"] = patch_data["lon"]
+        params["lat"] = patch_data["lat"]
 
     if not updates:
-        raise HTTPException(400, "Nada que actualizar")
+        raise HTTPException(status_code=400, detail="Nada que actualizar")
 
     sql = text(f"UPDATE ont SET {', '.join(updates)} WHERE id = :id")
     await db.execute(sql, params)
     await db.commit()
     return {"ok": True}
+
+
+
+#################
+#  AGIS
+#################
+from .agis_client import _get_agis_token, fetch_cto_list, fetch_cto_geojson
+from fastapi import HTTPException
+
+@app.get("/ctos/list", tags=["ctos"])
+async def cto_list():
+    try:
+        return await fetch_cto_list()
+    except Exception as e:
+        raise HTTPException(502, f"Error AGIS list: {e}")
+
+@app.get("/ctos/geojson", tags=["ctos"])
+async def cto_geojson():
+    try:
+        return await fetch_cto_geojson()
+    except Exception as e:
+        raise HTTPException(502, f"Error AGIS geojson: {e}")

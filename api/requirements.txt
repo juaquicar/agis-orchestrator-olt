@@ -6,3 +6,4 @@ asyncpg==0.29.0
 geoalchemy2==0.15.2
 pydantic==2.7.1
 python-multipart==0.0.9
+httpx
