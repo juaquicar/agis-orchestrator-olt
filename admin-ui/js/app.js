@@ -3,6 +3,18 @@
 import { API } from './api.js';
 import { getCTOGeoJSON } from './api.js';
 
+const ctoIcon = L.icon({
+  iconUrl: 'https://agis-eu.stratosgs.com/static/main/img/legend_v2/CA.svg',
+  iconSize: [25, 25],      // ajusta al tamaño deseado
+  iconAnchor: [12, 12],    // punto central como ancla
+  // Sombra
+  shadowUrl:   'https://unpkg.com/leaflet@1.9.3/dist/images/marker-shadow.png',
+  shadowSize:  [30, 30],   // ajusta según la imagen de sombra
+  shadowAnchor:[12, 12]    // punto de anclaje de la sombra
+});
+
+console.log(ctoIcon)
+
 let selectedOntId = null;
 let mode = null; // 'locate' o 'assign'
 let ctoDict = {};
@@ -30,7 +42,7 @@ async function loadCtos() {
   const geo = await getCTOGeoJSON();
   L.geoJSON(geo, {
     pointToLayer: (f, latlng) =>
-      L.circleMarker(latlng, { radius: 6, fillOpacity: 0.5 }),
+      L.marker(latlng, { icon: ctoIcon }),
     onEachFeature: (f, layer) => {
       const { nombre, uuid } = f.properties;
       ctoDict[uuid] = { nombre, latlng: layer.getLatLng() };
@@ -123,9 +135,10 @@ async function loadOnts() {
     }
   });
 
-  // Lista lateral: ONTs que no aparecen en /geo
-  const locatedIds = new Set(geoResp.features.map(f => f.properties.ont_id));
-  const unlocated = allResp.items.filter(o => !locatedIds.has(o.id));
+  // Lista lateral: ONTs SIN ubicación (sin lat/lon en la base de datos)
+  const unlocated = allResp.items.filter(o =>
+    o.lat === null || o.lon === null
+  );
   renderUnlocatedList(unlocated);
 }
 
