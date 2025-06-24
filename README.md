@@ -192,4 +192,13 @@ Repite para `redis_data` cambiando rutas.
 
 ---
 
+
+## Autor
+
+Juanma Quijada – juanma.quijada@stratosgs.com
+
+## Licencia
+
+MIT License – ver [LICENSE](LICENSE).
+
 > Para más detalles técnicos, consulta la documentación interna o el repositorio en GitHub.

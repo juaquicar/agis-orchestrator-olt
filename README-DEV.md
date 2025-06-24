@@ -331,4 +331,13 @@ Actions principales:
 
 ---
 
+
+## Autor
+
+Juanma Quijada – juanma.quijada@stratosgs.com
+
+## Licencia
+
+MIT License – ver [LICENSE](LICENSE).
+
 ¡Bienvenido al desarrollo del OLT-Orchestrator! Cualquier duda o contribución es bienvenida. Estamos abiertos a sugerencias y mejoras.
