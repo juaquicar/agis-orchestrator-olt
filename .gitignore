@@ -1,1 +1,53 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+test/venv/
 /test/venv/
+
+# Celery beat schedule (se genera en tiempo de ejecución)
+collector/celerybeat-schedule
+
+# Entornos locales / variables de entorno
+.env
+.env.local
+
+# Logs
+*.log
+
+/logs
+
+# IDEs y editores
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# macOS
+.DS_Store
+
+# pytest
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node.js (por si hubiera frontend con dependencias)
+node_modules/
+

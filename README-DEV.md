@@ -1,159 +1,334 @@
-## Guía de desarrollo y pruebas
+# README-DEV.md
 
-
-
-### 1 . Requisitos previos
-
-| Herramienta     | Versión mínima          | Notas                                      |
-| --------------- | ----------------------- | ------------------------------------------ |
-| Docker Engine   | 24 .x                   | Linux o Docker Desktop (Win/Mac)           |
-| Docker Compose  | integrado en Docker CLI | (`docker compose …`)                       |
-| Python          | 3.12 (opcional)         | Sólo si quieres ejecutar los tests en host |
-| Make (opcional) | 4.x                     | facilita comandos (`make up`)              |
+Este documento está dirigido a desarrolladores que quieran trabajar, extender y probar el **OLT-Orchestrator** en modo desarrollo.
 
 ---
 
-### 2 . Clona y arranca en modo **desarrollo**
+
+## Visión general
+
+El **OLT-Orchestrator** es un sistema de orquestación y monitorización de OLTs/ONTs que:
+
+* **Colecciona** datos de potencias (PTX/PRX) y estados de ONTs de múltiples OLTs (Huawei, Zyxel, etc.).
+* **Almacena** la información en PostgreSQL con TimescaleDB (series temporales) y PostGIS (geoespacial).
+* **Expone** una API REST (FastAPI) para consultar salud, geojson, listado de ONTs y series de potencias.
+* **Admin-UI** en Docker con un mapa interactivo para ubicar ONTs y asociarlas a CTOs obtenidas de aGIS TELCO.
+
+## Prerequisitos
+
+* Docker & Docker Compose (>= v2)
+* Python 3.12 (para tests locales)
+* `make` (opcional)
+* Acceso a Redis (por defecto en `redis://redis:6379/0`)
+* Acceso a un servidor aGIS TELCO (solo en integración CTO)
+
+## Estructura del repositorio
+
+```
+├── admin-ui/            # Frontend estático (HTML, CSS, JS)
+├── api/                 # FastAPI + Pydantic + SQLAlchemy Async
+├── collector/           # Celery worker + tareas de polling OLTs
+├── db-init/             # Scripts SQL de extensiones y esquema
+├── test/                # Tests y cliente API de ejemplo (api_client.py)
+├── docker compose.yml   # Definición de servicios Docker
+├── Dockerfile (api)     # Para la imagen de la API
+├── deploy.dev.sh        # Script de despliegue local rápido
+└── ...
+```
+
+## Variables de entorno
+
+Crea un fichero `.env` (o copia el .env.example con tus variables).
+
+
+## Arranque del entorno de desarrollo
+
+1. Clona el repositorio:
 
 ```bash
-# ① descomprime el zip
-unzip orchestrator-starter.zip -d olt-orchestrator
-cd olt-orchestrator
+git clone [https://github.com/juaquicar/agis-orchestrator-olt.git](https://github.com/juaquicar/agis-orchestrator-olt.git)
+cd agis-orchestrator-olt
+````
 
-# ② copia variables
-cp .env.example .env           # edita contraseñas y DSN si lo deseas
-
-# ③ crea un override para “hot-reloading”
-cat > docker-compose.override.yml <<'EOF'
-services:
-  api:
-    volumes:
-      - ./api:/app/api        # monta tu código
-    command: >
-      uvicorn app.main:app
-      --host 0.0.0.0 --port 8000 --reload
-
-  collector:
-    volumes:
-      - ./collector:/app      # monta tu código
-    command: >
-      watchmedo auto-restart
-      --directory=/app
-      --pattern=*.py
-      -- celery -A tasks worker -B --loglevel=info
-EOF
-# watchmedo viene con 'watchdog'; añade 'watchdog' a requirements si lo necesitas
-
-# ④ arranca todo
+2. Lanza todos los servicios en segundo plano:
+```bash
 docker compose up -d --build
+# o ./deploy.dev.sh para un alias rápido si queires sistemas de logs y demás. 
 ```
 
-*Ahora cualquier cambio en `api/` se recarga al instante en FastAPI y los workers Celery se reinician automáticamente cuando editas `collector/`.*
 
----
 
-### 3 . Base de datos: migraciones y datos de prueba
-
-1. **Conéctate** al contenedor:
-
-   ```bash
-   docker compose exec db psql -U postgres -d olt
-   ```
-
-2. Genera tablas iniciales (si no existen):
-
-   ```sql
-   \i api/app/sql/schema.sql   -- o usa Alembic más adelante
-   ```
-
-3. Semilla mínima para probar:
-
-   ```sql
-   INSERT INTO olt(vendor,host,port,username,password,description)
-   VALUES ('huawei','192.0.2.10',23,'root','***','Lab OLT');
-   ```
-
----
-
-### 4 . Pruebas unitarias y de integración
-
-#### a) Estructura recomendada
-
-```
-/tests
-├── api           # tests de endpoints
-│   └── test_geo.py
-├── collector     # tests de lógica Celery / parsing
-│   └── test_parse_huawei.py
-└── conftest.py   # fixtures (db temp, client, etc.)
-```
-
-#### b) Ejecutar tests **en host** (rápido)
+3. Verifica que los contenedores estén `Up`:
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r api/requirements.txt -r collector/requirements.txt pytest httpx[cli] pytest-asyncio
-pytest -q
+docker compose ps
+````
+
+4. Inicializa la base de datos (solo al primer arranque):
+- Los scripts en `db-init/` se ejecutan automáticamente gracias a Docker y al directorio `docker-entrypoint-initdb.d`.
+
+5. Accede:
+- **API**: http://localhost:8000/docs (Swagger UI)
+- **Admin-UI**: http://localhost:8888/
+
+
+## Monitoreo de logs
+
+Para depurar y seguir en tiempo real:
+
+- Logs de todos los servicios:
+```bash
+docker compose logs -f
 ```
 
-Las pruebas usan `httpx.AsyncClient` para hacer peticiones al contenedor `api`:
+* Solo Collector (polling OLT):
+```bash
+docker compose logs -f collector
+```
+
+- Solo API (FastAPI):
+```bash
+docker compose logs -f api
+```
+
+* Solo Admin-UI (servidor estático/nginx):
+
+```bash
+docker compose logs -f nginx
+```
+
+
+## Apagar el entorno
+
+```bash
+docker compose down
+# para eliminar volúmenes y datos:
+docker compose down -v
+```
+
+## Base de datos y migraciones
+
+* **Extensiones**: TimescaleDB & PostGIS (`01_extensions.sql`)fileciteturn0file1
+* **Esquema inicial**: `02_schema.sql`
+* **Props & status**: `20250618_add_props_and_last_read.sql`, `20250618_add_status.sql`
+
+Para rehacer la BD en local:
+
+```bash
+docker compose down -v
+docker compose up -d db
+# espera a que termine, luego levanta el resto
+docker compose up -d
+```
+
+## Testeo de la API
+
+1. Instala dependencias de test:
+
+```bash
+pip install -r test/requirements.txt
+```
+
+2. Usar el cliente CLI de ejemplo (`test/api_client.py`):
+```bash
+cd test
+python api_client.py health
+gitpython api_client.py list --olt zyxel-central --limit 5
+```
+
+3. Con `curl` o Postman contra `http://localhost:8000`:
+
+```bash
+curl [http://localhost:8000/health](http://localhost:8000/health)
+curl "[http://localhost:8000/onts?limit=10](http://localhost:8000/onts?limit=10)"
+```
+
+4. Ejecutar tests unitarios (añade más según vayas creando lógica):
+```bash
+pytest test/
+```
+
+## Arquitectura y modelos de datos
+
+### Tablas principales (PostgreSQL + TimescaleDB + PostGIS)
+
+| Tabla          | Descripción                                                                       |
+| -------------- | --------------------------------------------------------------------------------- |
+| **olt**        | Catálogo de OLTs (id, vendor, host, credenciales)                                 |
+| **ont**        | ONTs detectadas (id interno, `vendor_ont_id`, geolocalización, `props`, `status`) |
+| **ont\_power** | Serie de tiempo de potencias (`time`, `ptx`, `prx`, `status`)                     |
+
+* `ont_power` es un **hypertable** (`time` como partición) para rendimiento en series largas.
+* `ont.geom` usa `geometry(Point,4326)` para coord. WGS84 y permite filtros geográficos.
+* `ont.props` almacena metadatos originales (`SN`, `Model`, `run_state`, etc.).
+
+### Modelos Pydantic (API)
 
 ```python
-@pytest.mark.asyncio
-async def test_geo_endpoint():
-    async with AsyncClient(base_url="http://localhost:8000") as client:
-        r = await client.get("/geo?bbox=-180,-90,180,90")
-        assert r.status_code == 200
+class Ont(BaseModel):
+    id: int
+    olt_id: str
+    vendor_ont_id: str
+    ptx: Optional[float]
+    prx: Optional[float]
+    status: str
+    cto_uuid: Optional[str]
+    lat: Optional[float]
+    lon: Optional[float]
+    last_read: datetime
+    props: Dict[str, Any]
 ```
 
-> Si prefieres tests **dentro** de Docker, añade un servicio `test` en `docker-compose.test.yml` con la misma imagen de `api` y monta `./tests`.
+```python
+class Point(BaseModel):
+    time: datetime
+    ptx: Optional[float]
+    prx: Optional[float]
+    status: Optional[str]
+```
+
+Endpoints clave:
+
+| Ruta                            | Método | Descripción                              |
+| ------------------------------- | ------ | ---------------------------------------- |
+| `/health`                       | GET    | Estado del servicio                      |
+| `/geo?bbox=minx,miny,maxx,maxy` | GET    | GeoJSON de ONTs en un bounding box       |
+| `/onts?limit=&offset=&olt_id=`  | GET    | Listado con última potencia y metadatos  |
+| `/onts/{ont_id}/history?hours=` | GET    | Serie PTX/PRX de la ONT en horas previas |
+| `/onts/{ont_id}`                | PATCH  | Actualizar `cto_uuid` o `lat`/`lon`      |
+| `/ctos/list`                    | GET    | Lista de CTOs desde aGIS TELCO           |
+| `/ctos/geojson`                 | GET    | GeoJSON de CTOs desde aGIS TELCO         |
+
+## Integración de nuevas OLTs / fabricantes
+
+Para añadir soporte de un nuevo fabricante u OLT desde cero, sigue estos pasos en el **collector**:
+
+1. **Instalar la librería Python**
+
+   * Asegúrate de que la librería de cliente de la OLT esté disponible en tu entorno (p.ej. `pip install jmq_olt_nuevo`).
+   * Añade esta dependencia a `collector/requirements.txt`.
+
+2. **Configurar `olts.yaml`**
+
+   * Abre `collector/config/olts.yaml` y define tu nuevo vendor y la instancia de OLT:
+
+   ```yaml
+   defaults:
+     poll_interval: 300
+     port: 23
+     prompt: "> "
+   olts:
+     - id: olt-nuevo-01
+       vendor: nuevo
+       host: 10.0.0.1
+       port: 443        # puerto si no es Telnet
+       username: admin
+       password: secr3t
+       poll_interval: 120    # override opcional
+       prompt: "> "         # override opcional
+       headers:
+         User-Agent: "MyCustomClient/1.0"
+         X-Auth-Token: "token123"
+   ```
+
+   * El bloque `headers` es opcional y se pasará al cliente si la librería lo soporta.
+
+3. **Extender `collector/tasks.py`: `build_client`**
+
+   * Localiza la función `build_client(cfg)` y añade un bloque `elif` para tu vendor:
+
+   ```python
+   def build_client(cfg):
+       vendor = cfg['vendor']
+       if vendor == 'huawei':
+           from huawei_api import HuaweiClient
+           return HuaweiClient(host=cfg['host'], port=cfg['port'], username=cfg['username'], password=cfg['password'])
+       elif vendor == 'zyxel':
+           from zyxel_api import ZyxelClient
+           return ZyxelClient(host=cfg['host'], port=cfg['port'], username=cfg['username'], password=cfg['password'], prompt=cfg.get('prompt'))
+       elif vendor == 'nuevo':
+           from jmq_olt_nuevo import NuevoOLTClient
+           # Pasar cabeceras HTTP si las define el usuario
+           headers = cfg.get('headers', {})
+           return NuevoOLTClient(
+               host=cfg['host'],
+               port=cfg['port'],
+               username=cfg['username'],
+               password=cfg['password'],
+               prompt=cfg.get('prompt'),
+               headers=headers
+           )
+       else:
+           raise ValueError(f"Vendor '{vendor}' no soportado")
+   ```
+
+4. **Mapeo de datos en `poll_single_olt`**
+
+   * Dentro de `tasks.py`, modifica o extiende el handler de polling para extraer de la respuesta de la librería los campos:
+
+     * **vendor\_id** (ID interno de la ONT)
+     * **ptx** y **prx** (potencias TX/RX)
+     * **status** (estado operativo)
+     * **props** (metadatos crudos)
+   * Ejemplo simplificado:
+
+   ```python
+   def poll_single_olt(client, olt_cfg):
+       raw_onts = client.list_onts()
+       timestamp = datetime.utcnow()
+       for raw in raw_onts:
+           ont = {
+               'vendor_ont_id': raw['id'],
+               'ptx': raw.get('tx_power'),
+               'prx': raw.get('rx_power'),
+               'status': raw.get('status'),
+               'props': raw
+           }
+           upsert_ont_power(olt_cfg['id'], ont, timestamp)
+   ```
+
+5. **Sincronizar catálogo de OLTs**
+
+   * Cada vez que modifiques `olts.yaml`, sincroniza la tabla `olt`:
+
+   ```bash
+   docker compose exec collector python - << 'EOF'
+   from tasks import sync_db
+   sync_db()
+   EOF
+   ```
+
+6. **Pruebas**
+
+   * Añade tests en `test/api_client.py` simulando el nuevo cliente:
+
+     ```python
+     from jmq_olt_nuevo import NuevoOLTClient
+
+     def test_list_onts_mock(monkeypatch):
+         # simula respuesta
+         monkeypatch.setattr(NuevoOLTClient, 'list_onts', lambda self: [{'id':'1','tx_power':1,'rx_power':-20,'status':'up'}])
+         client = NuevoOLTClient(host='x',port=1,user='u',pass='p')
+         assert len(client.list_onts()) == 1
+     ```
 
 ---
 
-### 5 . Depuración
+## Admin-UI & Mapa interactivo & Mapa interactivo
 
-| Zona           | Cómo depurar                                                         |
-| -------------- | -------------------------------------------------------------------- |
-| **API**        | `docker compose logs -f api` o bien `curl -s localhost:8000/health`  |
-| **Celery**     | `docker compose logs -f collector` *(tareas cada 5 min por defecto)* |
-| **DB**         | `docker compose exec db psql …` + `SELECT …`                         |
-| **Leaflet UI** | Navegador → `http://localhost` y usa DevTools / red                  |
+* Ubicación: `admin-ui/index.html`, `admin-ui/css/style.css`, `admin-ui/js/{api.js,app.js}`
+* Basado en **Leaflet** y **markerCluster** para visualizar ONTs y CTOs.
+* Rutas base:
 
-*Tip:* en `app/main.py` puedes `import logging; logging.basicConfig(level=logging.DEBUG)` para trazas verborosas.
+  * API (FastAPI) en `http://localhost:8000`
+  * UI servir estático con **nginx** en `http://localhost:8888`
 
----
+Actions principales:
 
-### 6 . Pruebas de extremo a extremo (E2E)
+* **Localizar ONT**: seleccionar ONT sin coords en lista lateral y click en mapa → PATCH `/onts/{id}` con `{ lat, lon }`.
+* **Asignar/Desasignar CTO**: botón en popup → PATCH `/onts/{id}` con `{ cto_uuid }` o `null`.
 
-1. **Levanta Postman / Insomnia** y genera una colección:
-
-   * `GET http://localhost:8000/geo?bbox=…`
-   * `PUT http://localhost:8000/onts/1/position`
-2. **Cypress** para la SPA Leaflet: añade un contenedor `cypress-run` que dispara pruebas UI.
 
 ---
 
-### 7 . Workflow típico
-
-| Paso                | Comando                                                                   |
-| ------------------- | ------------------------------------------------------------------------- |
-| Levantar todo       | `docker compose up -d --build`                                            |
-| Ver logs live       | `docker compose logs -f api collector`                                    |
-| Añadir una librería | edita `api/requirements.txt` → `docker compose up -d --build api`         |
-| Ejecutar tests      | `pytest -q` (host) o `docker compose -f docker-compose.test.yml run test` |
-| Parar entorno       | `docker compose down`                                                     |
-
----
-
-### 8 . Próximos escalones
-
-1. **Alembic** para migraciones versionadas (`alembic init migrations`).
-2. **GitHub Actions**:
-
-   * job “test” → `docker compose -f … up -d`, `pytest`, `docker compose down`.
-3. **K6 o Locust** para carga del endpoint `/geo`.
-4. **Prometheus & Grafana**: exportadores de Postgres y Celery.
-
----
-
-Con estos pasos tienes un ciclo **código → hot-reload → tests → debug** completamente dentro de Docker, evitando “works on my machine”. Si necesitas templates de *fixtures*, ejemplos de parsing de las librerías Huawei/Zyxel o cómo integrar Alembic, dímelo y lo ampliamos. ¡A programar!
+¡Bienvenido al desarrollo del OLT-Orchestrator! Cualquier duda o contribución es bienvenida. Estamos abiertos a sugerencias y mejoras.

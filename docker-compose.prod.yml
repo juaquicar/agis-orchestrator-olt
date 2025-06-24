@@ -1,0 +1,12 @@
+services:
+  collector:
+    volumes:
+      - ./collector/config:/config:ro
+    environment:
+      - OLT_CONFIG_PATH=/config/olts.yaml
+
+  api:
+    volumes:
+      - ./collector/config:/config:ro
+    environment:
+      - OLT_CONFIG_PATH=/config/olts.yaml
