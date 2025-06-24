@@ -1,25 +1,33 @@
 services:
   db:
+    image: postgres:15-alpine
     ports:
       - "5433:5432"
+
   redis:
+    image: redis:7-alpine
     ports:
       - "6378:6379"
+
   api:
-    image: juaquicar/agis-orchestrator-olt-api:latest   # ya publicado en Docker Hub / GHCR
-    volumes:                                     
+    image: juaquicar/agis-orchestrator-olt-api:latest
+    volumes:
       - ./collector/config:/config:ro
     environment:
       - OLT_CONFIG_PATH=/config/olts.yaml
     ports:
-      - "8000:8000"        # opcional si expones directamente, o bien reenvías sólo desde nginx
+      - "8000:8000"
+
   collector:
     image: juaquicar/agis-orchestrator-olt-collector:latest
     volumes:
       - ./collector/config:/config:ro
     environment:
       - OLT_CONFIG_PATH=/config/olts.yaml
-  nginx:
+
+  admin-ui:
+    image: juaquicar/agis-orchestrator-olt-admin-ui:latest
+    depends_on:
+      - api
     ports:
       - "8888:80"
-    # puedes quitar el mapping 8888:80, sólo queda 80:80
