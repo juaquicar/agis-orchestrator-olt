@@ -1,33 +1,12 @@
 services:
-  db:
-    image: postgres:15-alpine
-    ports:
-      - "5433:5432"
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6378:6379"
+  collector:
+    volumes:
+      - ./collector/config:/config:ro
+    environment:
+      - OLT_CONFIG_PATH=/config/olts.yaml
 
   api:
-    image: juaquicar/agis-orchestrator-olt-api:latest
     volumes:
       - ./collector/config:/config:ro
     environment:
       - OLT_CONFIG_PATH=/config/olts.yaml
-    ports:
-      - "8000:8000"
-
-  collector:
-    image: juaquicar/agis-orchestrator-olt-collector:latest
-    volumes:
-      - ./collector/config:/config:ro
-    environment:
-      - OLT_CONFIG_PATH=/config/olts.yaml
-
-  admin-ui:
-    image: juaquicar/agis-orchestrator-olt-admin-ui:latest
-    depends_on:
-      - api
-    ports:
-      - "8888:80"

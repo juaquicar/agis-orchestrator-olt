@@ -16,7 +16,6 @@ Este paquete contiene un **esqueleto mínimo** para levantar:
 .
 ├── docker-compose.yml
 ├── .env.example
-├── nginx.conf
 ├── api/          # servicio FastAPI
 ├── collector/    # workers Celery
 └── admin-ui/     # app Leaflet  Reemplaza valores en `.env` (copiar de `.env.example`) y ajusta `OLT_*` según tu red.
