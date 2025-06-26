@@ -3,6 +3,8 @@ import os
 import json
 import datetime
 import psycopg2
+import random
+import datetime
 
 # Cadena de conexión: ajusta host/puerto/usuario/password si es necesario
 DSN = os.getenv("DB_DSN", "postgresql://postgres:changeme@localhost:5433/olt")
@@ -55,8 +57,16 @@ now = datetime.datetime.utcnow()
 for ont_id in filter(None, ids):
     for h in range(0, 24, 6):
         t = now - datetime.timedelta(hours=h)
-        cur.execute(insert_power,
-                    (t, ont_id, -15.0 - h, -20.0 - h,  1))
+        status = random.randint(0, 1)
+        if status:
+            # valor aleatorio de ptx entre 2 y 5
+            ptx = random.uniform(2.0, 5.0)
+            # valor aleatorio de prx entre -24 y -17
+            prx = random.uniform(-24.0, -17.0)
+            cur.execute(insert_power, (t, ont_id, ptx, prx, status))
+        else:
+            cur.execute(insert_power, (t, ont_id, None, None, status))
+
 
 conn.commit()
 cur.close()

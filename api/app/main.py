@@ -64,22 +64,39 @@ async def geo(
 ) -> Dict[str, Any]:
     minx, miny, maxx, maxy = parse_bbox(bbox)
     sql = text("""
+        WITH last AS (
+            SELECT DISTINCT ON (ont_id)
+              ont_id,
+              time,
+              ptx,
+              prx,
+              status AS power_status
+            FROM ont_power
+            ORDER BY ont_id, time DESC
+        )
         SELECT
           o.id,
           o.olt_id,
-          o.vendor_ont_id AS vendor_ont_id,
-          o.serial,
+          o.vendor_ont_id       AS vendor_ont_id,
+          o.status              AS status,
           o.cto_uuid,
-          ST_Y(o.geom) AS lat,
-          ST_X(o.geom) AS lon,
-          ST_AsGeoJSON(o.geom) AS geom
+          o.description,
+          ST_Y(o.geom)          AS lat,
+          ST_X(o.geom)          AS lon,
+          ST_AsGeoJSON(o.geom)  AS geom,
+          l.ptx,
+          l.prx,
+          l.time                AS last_read,
+          l.power_status
         FROM ont AS o
+        JOIN last AS l
+          ON l.ont_id = o.id
         WHERE 
-            o.geom IS NOT NULL
-            AND ST_Intersects(
-            o.geom,
-           ST_MakeEnvelope(:minx, :miny, :maxx, :maxy, 4326)
-        )
+          o.geom IS NOT NULL
+          AND ST_Intersects(
+                o.geom,
+                ST_MakeEnvelope(:minx, :miny, :maxx, :maxy, 4326)
+              )
     """)
     result = await db.execute(sql, {"minx": minx, "miny": miny, "maxx": maxx, "maxy": maxy})
     rows = result.fetchall()
@@ -94,7 +111,11 @@ async def geo(
                     "ont_id": r.id,
                     "olt_id": r.olt_id,
                     "vendor_ont_id": r.vendor_ont_id,
-                    "serial": r.serial,
+                    "status": r.status,
+                    "ptx": r.ptx,
+                    "prx": r.prx,
+                    "cto_uuid": r.cto_uuid,
+                    "description": r.description
                 },
             })
     return {"type": "FeatureCollection", "features": features}

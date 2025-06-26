@@ -7,13 +7,13 @@ Instalación:
 
 Uso rápido:
   python api_client.py health
-  python api_client.py geo -b "-3.80,40.38,-3.60,40.49"
+  python api_client.py geo
   python api_client.py list --olt zyxel-central --limit 10
   python api_client.py history 123456 --hours 6 --csv potencias.csv
   python api_client.py metrics 123456 --metric ptx --days 7 --csv metrics.csv
 ────────────────────────────────────────────────────────────────────
 Variables de entorno admitidas:
-  ORCH_API    URL base (por defecto http://localhost:8000)
+  ORCH_API    URL base (por defecto http://localhost:8001)
   ORCH_TOKEN  Bearer token si tu API tiene auth
 """
 from __future__ import annotations
@@ -32,6 +32,7 @@ BASE_URL = os.getenv("ORCH_API", "http://localhost:8001").rstrip("/")
 TOKEN    = os.getenv("ORCH_TOKEN")   # opcional
 
 # ─────────────────────── Helpers HTTP ────────────────────────
+
 def api_get(path: str, params: dict | None = None):
     url = f"{BASE_URL}{path}"
     print(f"GET {url} params={params}")
@@ -52,12 +53,17 @@ def health():
     click.echo(data)
 
 @cli.command()
-@click.option("-b", "--bbox", required=True,
-              help="minLon,minLat,maxLon,maxLat (WGS-84)")
+@click.option(
+    "-b", "--bbox",
+    default="-18.0,27.0,4.5,44.0",
+    show_default=True,
+    help="minLon,minLat,maxLon,maxLat (WGS-84) — por defecto cubre toda España"
+)
 @click.option("--out", type=click.Path(), help="Guardar GeoJSON en fichero")
 def geo(bbox: str, out: str | None):
     """GeoJSON de ONTs dentro del BBOX."""
     data = api_get("/geo", {"bbox": bbox})
+    print(data)
     click.echo(f"Features: {len(data.get('features', []))}")
     if out:
         Path(out).write_text(json.dumps(data, indent=2))
@@ -72,6 +78,7 @@ def list_onts(olt: str | None, limit: int):
     if olt:
         params["olt_id"] = olt
     data = api_get("/onts", params)
+    print(data)
     click.echo(f"Total ONTs: {data.get('total')}")
     for ont in data.get("items", []):
         click.echo(f"  {ont['id']}  "
