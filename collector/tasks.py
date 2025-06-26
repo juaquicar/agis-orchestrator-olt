@@ -19,6 +19,8 @@ from celery import Celery
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
+from config import STATUS_NORMALIZE
+
 # ── APIs OLT ─────────────────────────────────────────────────
 try:
     from jmq_olt_huawei.ma56xxt import APIMA56XXT, UserBusyError
@@ -47,8 +49,8 @@ _INSERT_POWER = text("""
 """)
 
 _UPSERT_ONT = text("""
-    INSERT INTO ont(olt_id, vendor_ont_id, status, props)
-    VALUES (:olt_id, :vendor_ont_id, :status, CAST(:props AS jsonb))
+    INSERT INTO ont(olt_id, vendor_ont_id, serial, model, description, status, props)
+    VALUES (:olt_id, :vendor_ont_id, :serial, :model, :description, :status, CAST(:props AS jsonb))
     ON CONFLICT (olt_id, vendor_ont_id)
       DO UPDATE SET 
         status = EXCLUDED.status,
@@ -151,7 +153,7 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
         if cfg["vendor"] == "zyxel":
             onts = client.get_all_onts()
         elif cfg["vendor"] == "huawei":
-            onts = client.get_onts()
+            onts = client.get_onts('0', 0) # TODO. ESTO DEBE CAMBIARSE POR scan_all()
         else:
             onts = []
             logging.warning("Vendor %s no localizado", cfg["vendor"])
@@ -176,41 +178,48 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
                 continue
             meta = {
                 "AID": aid,
-                "SN": ont.get("SN"),
                 "Status": ont.get("Status"),
                 "Template-ID": ont.get("Template-ID"),
                 "FW Version": ont.get("FW Version"),
-                "Model": ont.get("Model"),
                 "Distance": ont.get("Distance"),
-                "Description": ont.get("Description"),
             }
             ptx = float(ont.get("ONT Tx") or ont.get("tx") or 0)
             prx = float(ont.get("ONT Rx") or ont.get("rx") or 0)
-            status = ont.get("Status", None)
+            status = STATUS_NORMALIZE.get(cfg["vendor"], {}).get(ont.get("Status", None), 98)
+            sn = ont.get("SN", None)
+            model = ont.get("Model", None)
+            description = ont.get("Description", None)
             vid = aid
         else:  # Huawei
+
+            # TODO: ESTE HAY QUE DARLE UNA VUELTA... PORQUE DEBE DAR LAS ONTS
+
             vid = f"{ont.schema_fsp}/{ont.id}"
             meta = {
                 "id":           vid,
                 "schema_fsp":   getattr(ont, "schema_fsp", None),
-                "sn":           getattr(ont, "sn", None),
                 "control_flag": getattr(ont, "control_flag", None),
                 "run_state":    getattr(ont, "run_state", None),
                 "config_state": getattr(ont, "config_state", None),
                 "match_state":  getattr(ont, "match_state", None),
                 "protect_side": getattr(ont, "protect_side", None),
-                "description":  getattr(ont, "description", None),
             }
             ptx = float(getattr(ont, "tx", getattr(ont, "ptx", 0)))
             prx = float(getattr(ont, "rx", getattr(ont, "prx", 0)))
-            status = ont.get("run_state", None)
+            status = STATUS_NORMALIZE.get(cfg["vendor"], {}).get(ont.get("run_state", None), 98)
+            sn = ont.get("sn", None)
+            model = None
+            description = ont.get("description", None)
 
         rows.append({
             "time":          now,
             "vendor_ont_id": vid,
             "ptx":           ptx,
             "prx":           prx,
-            "status":         status,
+            "status":        status,
+            "serial":        sn,
+            "model":         model,
+            "description":   description,
             "props":         json.dumps(meta),
         })
 

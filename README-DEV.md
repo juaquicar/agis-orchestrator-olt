@@ -171,8 +171,11 @@ class Ont(BaseModel):
     vendor_ont_id: str
     ptx: Optional[float]
     prx: Optional[float]
-    status: str
+    status: int
     cto_uuid: Optional[str]
+    serial: Optional[str]
+    model: Optional[str]
+    description: Optional[str]
     lat: Optional[float]
     lon: Optional[float]
     last_read: datetime

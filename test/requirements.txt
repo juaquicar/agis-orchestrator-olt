@@ -1,3 +1,4 @@
 click>=8.1
 requests>=2.32
 pandas>=2.2
+psycopg2==2.9.10

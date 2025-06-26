@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS ont (
     geom             geometry(Point, 4326),                  -- posición individual (NULL si hereda CTO)
     serial           TEXT,
     model            TEXT,
+    description      TEXT,
+    status           INTEGER,
+
     UNIQUE (olt_id, vendor_ont_id)
 );
 
@@ -54,6 +57,7 @@ CREATE TABLE IF NOT EXISTS ont_power (
                          ON DELETE CASCADE,
     ptx    NUMERIC,                         -- dBm transmitido
     prx    NUMERIC,                         -- dBm recibido
+    status INTEGER,
     PRIMARY KEY (time, ont_id)
 );
 

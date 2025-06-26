@@ -29,7 +29,7 @@ services:
       redis:
         condition: service_started
     ports:
-      - "8000:8000"
+      - "8001:8000"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
     environment:
       LOG_LEVEL: info
@@ -51,6 +51,6 @@ services:
     depends_on:
       - api
     ports:
-      - "8888:80" # DEbe ser 80:80
+      - "8888:80" # Debe ser 80:80
 volumes:
   dbdata:

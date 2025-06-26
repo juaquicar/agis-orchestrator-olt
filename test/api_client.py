@@ -26,7 +26,7 @@ import click
 import requests
 import pandas as pd
 
-BASE_URL = os.getenv("ORCH_API", "http://localhost:8000").rstrip("/")
+BASE_URL = os.getenv("ORCH_API", "http://localhost:8001").rstrip("/")
 TOKEN    = os.getenv("ORCH_TOKEN")   # opcional
 
 print(BASE_URL, TOKEN)

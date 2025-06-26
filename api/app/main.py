@@ -15,7 +15,9 @@ from .database import get_db  # helper para AsyncSession
 
 
 from fastapi.middleware.cors import CORSMiddleware
-
+from .agis_client import _get_agis_token, fetch_cto_list, fetch_cto_geojson
+from fastapi import HTTPException
+from fastapi import Path, Body
 
 
 app = FastAPI(
@@ -104,7 +106,10 @@ class Ont(BaseModel):
     vendor_ont_id: str
     ptx: float | None = None
     prx: float | None = None
-    status: str
+    status: int
+    serial: str | None = None
+    model: str | None = None
+    description: str | None = None
     cto_uuid: str | None = None
     lat: float | None = None
     lon: float | None = None
@@ -121,7 +126,7 @@ class Point(BaseModel):
     time: datetime
     ptx: float | None = Field(None, example=-22.5)
     prx: float | None = Field(None, example=-26.8)
-    status: str | None =  Field(None, example='online')
+    status: str | None =  Field(None, example=1)
 
 # ──────────────────── LISTADO DE ONTs ───────────────────────
 @app.get(
@@ -149,6 +154,9 @@ async def list_onts(
           o.vendor_ont_id AS vendor_ont_id,
           o.status,
           o.cto_uuid,
+          o.serial,
+          o.model,
+          o.description,
           ST_Y(o.geom) AS lat,
           ST_X(o.geom) AS lon,
           l.ptx,
@@ -175,6 +183,9 @@ async def list_onts(
             lat=r.lat,
             lon=r.lon,
             cto_uuid=r.cto_uuid,
+            serial=r.serial,
+            model=r.model,
+            description=r.description,
             last_read=r.last_read,
             props=r.props,
         ) for r in rows
@@ -213,7 +224,6 @@ async def ont_history(
 
 
 # ─────────────── UBICAR Y UUID POR ADMIN-UI ─────────────────────
-from fastapi import Path, Body
 
 class OntPatch(BaseModel):
     cto_uuid: str | None = None
@@ -255,8 +265,7 @@ async def patch_ont(
 #################
 #  AGIS
 #################
-from .agis_client import _get_agis_token, fetch_cto_list, fetch_cto_geojson
-from fastapi import HTTPException
+
 
 @app.get("/ctos/list", tags=["ctos"])
 async def cto_list():

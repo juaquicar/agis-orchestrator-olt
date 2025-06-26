@@ -10,3 +10,20 @@ def load_config():
         for k, v in defaults.items():
             olt.setdefault(k, v)
     return raw["olts"]
+
+
+
+STATUS_NORMALIZE = {
+    'zyxel': {
+        'NOT': 0,
+        'IS': 1,
+    },
+    'huawei': {
+        'offline': 0,
+        'online': 1,
+        'losi': 2,
+        'dyinggasp': 3,
+    },
+}
+## unknown = 98
+## pending = 99
