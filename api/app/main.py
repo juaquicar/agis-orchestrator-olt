@@ -280,3 +280,63 @@ async def cto_geojson():
         return await fetch_cto_geojson()
     except Exception as e:
         raise HTTPException(502, f"Error AGIS geojson: {e}")
+
+
+
+######################
+# METRICS TIMESERIES #
+######################
+
+
+class OntMetricBase(BaseModel):
+    ont_id: int
+    metric: str
+    value: float | None
+    timestamp: datetime
+
+    model_config = dict(from_attributes=True)  # ORM mode
+
+class OntMetricResponse(OntMetricBase):
+    pass  # aquí podrías añadir un campo `id` si lo necesitas
+
+# ─── Endpoint /metrics/ para PTX/PRX/STATUS de ONT ────────────────────────────
+
+@app.get(
+    "/metrics/",
+    response_model=List[OntMetricResponse],
+    summary="Serie temporal de métricas (ptx/prx/status) de una ONT",
+    tags=["metrics"],
+)
+async def get_ont_metrics(
+    ont_id: int = Query(..., description="ID interno de la ONT"),
+    metric: str = Query(
+        ...,
+        regex="^(ptx|prx|status)$",
+        description="Métrica a consultar: 'ptx', 'prx' o 'status'",
+    ),
+    start: datetime = Query(..., description="Fecha/hora de inicio (ISO8601)"),
+    end: datetime = Query(..., description="Fecha/hora de fin (ISO8601)"),
+    db: AsyncSession = Depends(get_db),
+) -> List[OntMetricResponse]:
+    """
+    Serie temporal cruda de una métrica de ont_power para una ONT (sin agregación).
+    """
+    sql = text("""
+        SELECT
+          ont_id         AS ont_id,
+          :metric        AS metric,
+          CASE
+            WHEN :metric = 'ptx'    THEN ptx
+            WHEN :metric = 'prx'    THEN prx
+            WHEN :metric = 'status' THEN status::DOUBLE PRECISION
+          END            AS value,
+          time           AS timestamp
+        FROM ont_power
+        WHERE ont_id = :ont_id
+          AND time BETWEEN :start AND :end
+        ORDER BY time ASC
+    """)
+    params = {"metric": metric, "ont_id": ont_id, "start": start, "end": end}
+    result = await db.execute(sql, params)
+    rows = result.fetchall()
+    return [OntMetricResponse(**r._mapping) for r in rows]

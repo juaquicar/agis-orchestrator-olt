@@ -139,7 +139,7 @@ docker compose down
 
 ```bash
 docker run --rm -v olt_data:/var/lib/postgresql/data -v "$(pwd)/backup:/backup" alpine:3.18 sh -c "tar czf /backup/db-$(date +%F).tgz -C /var/lib/postgresql/data ."
-````
+```
 
 - **Redis** (volumen `redis_data`):
 ```bash
@@ -148,7 +148,7 @@ docker run --rm \
   -v "$env/backup:/backup" \
   alpine:3.18 \
   tar czvf /backup/redis_data_$(date +%F).tar.gz -C /data .
-````
+```
 
 * **Configuración & Logs**:
 
