@@ -57,7 +57,8 @@ now = datetime.datetime.utcnow()
 for ont_id in filter(None, ids):
     for h in range(0, 24, 6):
         t = now - datetime.timedelta(hours=h)
-        status = random.randint(0, 1)
+        # status = random.randint(0, 1)
+        status = 1
         if status:
             # valor aleatorio de ptx entre 2 y 5
             ptx = random.uniform(2.0, 5.0)

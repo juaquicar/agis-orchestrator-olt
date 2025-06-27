@@ -81,9 +81,12 @@ async def geo(
           o.status              AS status,
           o.cto_uuid,
           o.description,
+          o.model,
+          o.serial,
           ST_Y(o.geom)          AS lat,
           ST_X(o.geom)          AS lon,
           ST_AsGeoJSON(o.geom)  AS geom,
+          o.props,
           l.ptx,
           l.prx,
           l.time                AS last_read,
@@ -104,18 +107,33 @@ async def geo(
     features: List[Dict[str, Any]] = []
     for r in rows:
         if r.geom:
-            features.append({
+            features.append({ # Vamos a hacer el objeto lo más parecido al local
                 "type": "Feature",
                 "geometry": json.loads(r.geom),
                 "properties": {
+                    "id": r.id,
                     "ont_id": r.id,
                     "olt_id": r.olt_id,
+                    "external_id": r.id,
                     "vendor_ont_id": r.vendor_ont_id,
-                    "status": r.status,
-                    "ptx": r.ptx,
-                    "prx": r.prx,
+                    "external_name": r.vendor_ont_id,
+                    "model": r.model,
+                    "sn": r.serial,
+                    "state": r.status,
+                    "state_nagios": None,
+                    "cpe_registration_host": None,
+                    "cpe_registration_id": r.vendor_ont_id,
+                    "cpe_registration_state": [
+                        r.status
+                    ],
+                    "topology": r.cto_uuid,
                     "cto_uuid": r.cto_uuid,
-                    "description": r.description
+                    "description": r.description,
+                    "props": r.props,
+                    "metrics": {
+                        "ptx": r.ptx,
+                        "prx": r.prx,
+                    }
                 },
             })
     return {"type": "FeatureCollection", "features": features}
