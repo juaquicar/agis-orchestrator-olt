@@ -83,26 +83,41 @@ aGIS_SERVICE=<tu_service_uuid>
 Define tus equipos OLT en formato YAML. Ejemplo:
 
 ```yaml
-olts:
-  - id: zyxel-central
-    vendor: zyxel
-    host: 192.168.1.10
-    port: 22
-    username: admin
-    password: secret
-    poll_interval: 300
-    prompt: ">"
-    description: Zyxel OLT central oficina
+# config/olts.yaml   (ejemplo completo)
+defaults:
+  poll_interval: 300            # 5 min
+  prompt: ">"                   # valor genérico; cada OLT puede sobre-escribirlo
 
-  - id: huawei-branch
+olts:
+  - id: zyxel-TEST
+    vendor: zyxel
+    host: 152.170.74.208
+    port: 2300
+    username: admin
+    password: 1234
+    prompt: "OLT1408A#"
+    description: "Zyxel – TEST"
+    poll_interval: 20
+
+  - id: huawei-TEST
     vendor: huawei
-    host: 192.168.2.20
-    port: 22
+    host: 192.168.88.25
+    port: 23
     username: root
-    password: rootpass
-    poll_interval: 300
-    prompt: "OLT>"
-    description: OLT sucursal Noroeste
+    password: admin
+    prompt: "MA5603T"
+    snmp_ip: 192.168.88.25
+    snmp_port: 161
+    snmp_community: public
+    description: "Huawei – Laboratorio"
+    poll_interval: 90
+    pon_list:
+      - frame: "0"
+        slot: 0
+        port: 0
+      - frame: "0"
+        slot: 0
+        port: 1
 ```
 
 El contenedor monta `collector/config` en `/config` y lee `/config/olts.yaml`.
