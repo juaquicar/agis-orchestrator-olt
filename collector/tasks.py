@@ -116,9 +116,15 @@ def build_client(cfg: Dict[str, Any]):
         if APIMA56XXT is None:
             raise ImportError("jmq_olt_huawei no instalado")
         return APIMA56XXT(
-            host=cfg["host"], port=cfg["port"],
-            username=str(cfg["username"]), password=str(cfg["password"]),
-            prompt=cfg["prompt"], timeout=timeout,
+            host=cfg["host"],
+            user=str(cfg["username"]),
+            password=str(cfg["password"]),
+            prompt=cfg["prompt"],
+            snmp_ip=cfg["snmp_ip"],
+            snmp_port=cfg["snmp_port"],
+            snmp_community=cfg["snmp_community"],
+            timeout=0.2,
+            debug=False
         )
 
     raise ValueError(f"Vendor no soportado: {cfg['vendor']}")
@@ -137,28 +143,49 @@ def setup_periodic(sender, **_):
         )
         logging.info("Programada 'poll_%s' cada %s s", c["id"], c["poll_interval"])
 
-# ── Tarea principal ─────────────────────────────────────────
+from typing import List, Dict, Any
+from asgiref.sync import async_to_sync
+
+def _scan_huawei(client, pon_list: List[Dict[str, Any]]) -> List[dict]:
+    # 1) abrir conexión Telnet / login
+    client.connect()      # o el método que tu cliente exponga para inicializar self.tn
+
+    onts: List[dict] = []
+    for pon in pon_list:
+        frame = str(pon["frame"])
+        slot  = int(pon["slot"])
+        port  = int(pon["port"])
+        logging.debug("Huawei: escaneando %s/%d/%d", frame, slot, port)
+        # ahora sí, get_onts ya tendrá self.tn != None
+        print(f"Escaneando {slot}, {port}")
+        slice = async_to_sync(client.get_onts)(slot, port)
+        onts.extend(slice)
+
+    # 2) cerrar sesión si tu cliente lo soporta
+    client.disconnect()
+
+    print(onts)
+    return onts
 @app.task
 def poll_single_olt(cfg: Dict[str, Any]) -> None:
     logging.info("Sondeando OLT %s (%s)…", cfg["id"], cfg["vendor"])
 
+    # 1 ▸ crear cliente
     try:
         client = build_client(cfg)
     except ImportError as exc:
         logging.error("Cliente no disponible: %s", exc)
         return
 
-    # 1 ▸ consulta ONTs
+    # 2 ▸ consulta ONTs
     try:
         if cfg["vendor"] == "zyxel":
             onts = client.get_all_onts()
         elif cfg["vendor"] == "huawei":
-            onts = client.get_onts('0', 0) # TODO. ESTO DEBE CAMBIARSE POR scan_all()
+            onts = _scan_huawei(client, cfg.get("pon_list", []))
         else:
-            onts = []
             logging.warning("Vendor %s no localizado", cfg["vendor"])
             return
-
     except UserBusyError:
         logging.warning("OLT %s ocupado, se reintentará", cfg["id"])
         return
@@ -166,50 +193,58 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
         logging.exception("Error consultando %s: %s", cfg["id"], exc)
         return
 
-    # 2 ▸ construye filas con metadatos y potencias
+    # 3 ▸ construye filas con metadatos y potencias
     now = dt.datetime.utcnow()
     rows: List[Dict[str, Any]] = []
 
+    def to_f(val: Any) -> float:
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return 0.0
+
     for ont in onts:
-        if isinstance(ont, dict):  # Zyxel
+        if cfg["vendor"] == "huawei":
+            vid = f"{ont.get('schema_fsp')}/{ont.get('id')}"
+            meta = {
+                "id":           vid,
+                "schema_fsp":   ont.get("schema_fsp"),
+                "control_flag": ont.get("control_flag"),
+                "run_state":    ont.get("run_state"),
+                "config_state": ont.get("config_state"),
+                "match_state":  ont.get("match_state"),
+                "protect_side": ont.get("protect_side"),
+            }
+            ptx = to_f(ont.get("ptx") or ont.get("tx"))
+            prx = to_f(ont.get("prx") or ont.get("rx"))
+            status = STATUS_NORMALIZE["huawei"].get(ont.get("run_state"), 98)
+            sn = ont.get("sn")
+            model = None
+            description = ont.get("description")
+
+        elif cfg["vendor"] == "zyxel":
             aid = ont.get("AID")
             if not aid:
-                logging.debug("Descartado dict sin AID: %s", ont)
+                logging.debug("Descartado dict sin AID (Zyxel): %s", ont)
                 continue
+            vid = aid
             meta = {
-                "AID": aid,
-                "Status": ont.get("Status"),
-                "Template-ID": ont.get("Template-ID"),
-                "FW Version": ont.get("FW Version"),
-                "Distance": ont.get("Distance"),
+                "AID":          aid,
+                "Status":       ont.get("Status"),
+                "Template-ID":  ont.get("Template-ID"),
+                "FW Version":   ont.get("FW Version"),
+                "Distance":     ont.get("Distance"),
             }
             ptx = float(ont.get("ONT Tx") or ont.get("tx") or 0)
             prx = float(ont.get("ONT Rx") or ont.get("rx") or 0)
-            status = STATUS_NORMALIZE.get(cfg["vendor"], {}).get(ont.get("Status", None), 98)
-            sn = ont.get("SN", None)
-            model = ont.get("Model", None)
-            description = ont.get("Description", None)
-            vid = aid
-        else:  # Huawei
+            status = STATUS_NORMALIZE["zyxel"].get(ont.get("Status"), 98)
+            sn = ont.get("SN")
+            model = ont.get("Model")
+            description = ont.get("Description")
 
-            # TODO: ESTE HAY QUE DARLE UNA VUELTA... PORQUE DEBE DAR LAS ONTS
-
-            vid = f"{ont.schema_fsp}/{ont.id}"
-            meta = {
-                "id":           vid,
-                "schema_fsp":   getattr(ont, "schema_fsp", None),
-                "control_flag": getattr(ont, "control_flag", None),
-                "run_state":    getattr(ont, "run_state", None),
-                "config_state": getattr(ont, "config_state", None),
-                "match_state":  getattr(ont, "match_state", None),
-                "protect_side": getattr(ont, "protect_side", None),
-            }
-            ptx = float(getattr(ont, "tx", getattr(ont, "ptx", 0)))
-            prx = float(getattr(ont, "rx", getattr(ont, "prx", 0)))
-            status = STATUS_NORMALIZE.get(cfg["vendor"], {}).get(ont.get("run_state", None), 98)
-            sn = ont.get("sn", None)
-            model = None
-            description = ont.get("description", None)
+        else:
+            logging.warning("Vendor %s no soportado al procesar ONTs", cfg["vendor"])
+            continue
 
         rows.append({
             "time":          now,
@@ -227,28 +262,41 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
         logging.warning("OLT %s devolvió 0 ONTs", cfg["id"])
         return
 
-    # 3 ▸ upsert en ont (con props) y bulk insert en ont_power
+    # 4 ▸ upsert en ont y bulk insert en ont_power
     with engine.begin() as conn:
-        # a) Upsert de todas las ONTs con sus props
-        seen: Dict[str, str] = {}
+        # a) Prepara un dict por cada ONT única
+        seen: Dict[str, Dict[str, Any]] = {}
         for r in rows:
-            seen[r["vendor_ont_id"]] = r["props"]
-        for vid, props in seen.items():
+            # dejamos la última fila de cada vendor_ont_id
+            seen[r["vendor_ont_id"]] = r
+
+        # b) Upsert con todos los campos necesarios
+        for vid, r in seen.items():
             conn.execute(
                 _UPSERT_ONT,
-                {"olt_id": cfg["id"], "vendor_ont_id": vid, "status": status, "props": props}
+                {
+                    "olt_id":        cfg["id"],
+                    "vendor_ont_id": vid,
+                    "serial":        r["serial"],
+                    "model":         r["model"],
+                    "description":   r["description"],
+                    "status":        r["status"],
+                    "props":         r["props"],
+                }
             )
-        # b) Recupera mapping vendor_ont_id → id
-        unique_vids = list(seen.keys())
+
+        # c) Recupera mapping vendor_ont_id → PK ont.id
         mapping = dict(conn.execute(
             text("""
                 SELECT vendor_ont_id, id
                   FROM ont
                  WHERE olt_id = :olt_id
                    AND vendor_ont_id = ANY(:vids)
-            """), {"olt_id": cfg["id"], "vids": unique_vids}
+            """),
+            {"olt_id": cfg["id"], "vids": list(seen.keys())}
         ).all())
-        # c) Inserta potencias
+
+        # d) Inserta batch de potencias
         power_rows = [
             {
                 "time":   r["time"],
@@ -256,7 +304,8 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
                 "ptx":    r["ptx"],
                 "prx":    r["prx"],
                 "status": r["status"],
-            } for r in rows
+            }
+            for r in rows
         ]
         conn.execute(_INSERT_POWER, power_rows)
 

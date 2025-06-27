@@ -4,21 +4,30 @@ defaults:
   prompt: ">"                   # valor genérico; cada OLT puede sobre-escribirlo
 
 olts:
-  - id: zyxel-TEST
-    vendor: zyxel
-    host: 152.170.74.208
-    port: 2300
-    username: admin
-    password: 1234
-    prompt: "OLT1408A#"
-    description: "Zyxel – TEST"
-    poll_interval: 20
+#  - id: zyxel-TEST
+#    vendor: zyxel
+#    host: 152.170.74.208
+#    port: 2300
+#    username: admin
+#    password: 1234
+#    prompt: "OLT1408A#"
+#    description: "Zyxel – TEST"
+#    poll_interval: 20
 
-#  - id: huawei-TEST
-#    vendor: huawei
-#    host: 192.168.88.25
-#    port: 23
-#    username: root
-#    password: admin
-#    prompt: "MA5600T>"
-#    poll_interval: 120
+  - id: huawei-TEST
+    vendor: huawei
+    host: 192.168.88.25
+    port: 23
+    username: root
+    password: admin
+    prompt: "MA5603T"
+    snmp_ip: 192.168.88.25
+    snmp_port: 161
+    snmp_community: public
+    description: "Huawei – Laboratorio"
+    poll_interval: 90
+    pon_list:
+      - frame: "0"
+        slot: 0
+        port: 0
+
