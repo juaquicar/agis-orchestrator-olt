@@ -120,12 +120,6 @@ async def geo(
                     "model": r.model,
                     "sn": r.serial,
                     "state": r.status,
-                    "state_nagios": None,
-                    "cpe_registration_host": None,
-                    "cpe_registration_id": r.vendor_ont_id,
-                    "cpe_registration_state": [
-                        r.status
-                    ],
                     "topology": r.cto_uuid,
                     "cto_uuid": r.cto_uuid,
                     "description": r.description,
