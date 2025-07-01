@@ -123,7 +123,7 @@ def build_client(cfg: Dict[str, Any]):
             snmp_ip=cfg["snmp_ip"],
             snmp_port=cfg["snmp_port"],
             snmp_community=cfg["snmp_community"],
-            timeout=0.2,
+            timeout=1,
             debug=False
         )
 

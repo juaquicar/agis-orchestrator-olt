@@ -3,7 +3,7 @@ celery[redis]==5.4.0
 sqlalchemy==2.0.30
 psycopg2-binary==2.9.9
 watchdog[watchmedo]==3.0.0
-jmq-olt-huawei==0.2.0
+jmq-olt-huawei==1.0.0
 jmq-olt-zyxel>=1.0.0
 pyyaml==6.0.2
 pysnmp==7.1.20
