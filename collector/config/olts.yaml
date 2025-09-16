@@ -4,15 +4,15 @@ defaults:
   prompt: ">"                   # valor genérico; cada OLT puede sobre-escribirlo
 
 olts:
-#  - id: zyxel-TEST
-#    vendor: zyxel
-#    host: 152.170.74.208
-#    port: 2300
-#    username: admin
-#    password: 1234
-#    prompt: "OLT1408A#"
-#    description: "Zyxel – TEST"
-#    poll_interval: 20
+  - id: zyxel-TEST
+    vendor: zyxel
+    host: 152.170.74.208
+    port: 2300
+    username: admin
+    password: 1234
+    prompt: "OLT1408A#"
+    description: "Zyxel – TEST"
+    poll_interval: 20
 
   - id: huawei-TEST
     vendor: huawei

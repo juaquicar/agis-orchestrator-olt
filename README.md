@@ -54,26 +54,46 @@ collector/config
 En la raíz del proyecto crea un fichero `.env.prod` (o `.env` si no existe) con el siguiente contenido:
 
 ```dotenv
+# ────────────────────────────
 # PostgreSQL / TimescaleDB
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=<tu_password>
-POSTGRES_DB=olt
-POSTGRES_HOST=db
-POSTGRES_PORT=5432
-# Si prefieres indicar directamente la URL de conexión:
-# DB_DSN=postgresql://postgres:<tu_password>@db:5432/olt
+# ────────────────────────────
+POSTGRES_PASSWORD=changeme     # contraseña del super-usuario postgres
+POSTGRES_DB=olt                # nombre de la base de datos que usará el servicio
 
-# Redis (broker Celery)
-REDIS_URL=redis://redis:6379/0
+# Cadena DSN que utilizan la API y el collector
+DB_DSN=postgresql://postgres:changeme@db:5432/olt
 
-# Seguridad API (JWT)
-JWT_SECRET=<clave_muy_segura>
+# ────────────────────────────
+# Redis  (broker Celery)
+# ────────────────────────────
+REDIS_URL=redis://redis:6379/0  # contenedor “redis” declarado en docker-compose, cuidado debe ser 6379, pero lo tengo ya en mi maq
 
-# aGIS TELCO
+# ────────────────────────────
+# Seguridad API  (JWT)
+# ────────────────────────────
+JWT_SECRET=supersecret
+
+
+# ────────────────────────────
+# OLTs
+# ────────────────────────────
+OLT_CONFIG_PATH = '/config/olts.yaml'
+
+
+# ────────────────────────────
+# aGIS CTOs
+# ────────────────────────────
 aGIS_HOST=https://agis-eu.stratosgs.com
-aGIS_USER=usuario.agis
-aGIS_PASS=<tu_pass>
-aGIS_SERVICE=<tu_service_uuid>
+aGIS_USER=USER
+aGIS_PASS=PASS
+aGIS_SERVICE=UUID_SERVICE
+
+
+# ────────────────────────────
+# NGINX
+# ────────────────────────────
+NGINX_FILE_PATH=./nginx.conf
+
 ```
 
 > **Nota:** el script de despliegue buscará `.env.prod`; si no existe, usará `.env`.
