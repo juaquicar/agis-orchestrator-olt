@@ -34,7 +34,7 @@ async def fetch_cto_list() -> List[Dict[str, Any]]:
     Devuelve una lista de diccionarios con keys: 'nombre' y 'uuid'.
     """
     token = await _get_agis_token()
-    url = f"{AGIS_HOST}/api/telco/general/SQLQuery/{AGIS_SERVICE}/"
+    url = f"{AGIS_HOST}/api/v1/agis/SQLQuery/{AGIS_SERVICE}/"
     headers = {
         "Authorization": f"Token {token}",
         "Content-Type": "application/json",
@@ -50,7 +50,7 @@ async def fetch_cto_list() -> List[Dict[str, Any]]:
 
 async def fetch_cto_geojson() -> Dict[str, Any]:
     token = await _get_agis_token()
-    url = f"{AGIS_HOST}/api/telco/gis/GetGeoJSON/{AGIS_SERVICE}/gen_equipos/"
+    url = f"{AGIS_HOST}/api/v1/agis/gis/GetGeoJSON/{AGIS_SERVICE}/gen_equipos/"
     headers = {
         "Authorization": f"Token {token}",
         "Content-Type": "application/json",
