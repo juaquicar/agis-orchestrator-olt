@@ -49,6 +49,16 @@ collector/config
 
 ## ⚙️ Configuración
 
+### 0. Instalar dependencias
+
+En `Ubuntu Server 24.04` instalar:
+
+```bash
+sudo snap install docker 
+```
+
+Comprueba también que tienes acceso Telnet/SSH a las OLTs que se van a configurar.
+
 ### 1. Variables de entorno: `.env` / `.env.prod`
 
 En la raíz del proyecto crea un fichero `.env.prod` (o `.env` si no existe) con el siguiente contenido:
