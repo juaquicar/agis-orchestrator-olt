@@ -54,7 +54,9 @@ collector/config
 En `Ubuntu Server 24.04` instalar:
 
 ```bash
-sudo snap install docker 
+sudo snap install docker
+git clone https://github.com/juaquicar/agis-orchestrator-olt.git
+cd agis-orchestrator-olt
 ```
 
 Comprueba también que tienes acceso Telnet/SSH a las OLTs que se van a configurar.
