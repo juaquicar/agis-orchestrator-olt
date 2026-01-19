@@ -31,3 +31,12 @@ olts:
         slot: 0
         port: 0
 
+  - id: zyxel1240XA-TEST
+    vendor: "zyxel1240XA"
+    host: "10.0.0.10"
+    port: 23
+    username: "admin"
+    password: "****"
+    prompt: "MSC1240XA#"
+    poll_interval: 60
+    slots: ["1", "2"]

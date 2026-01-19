@@ -12,7 +12,7 @@ import os
 import logging
 import datetime as dt
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import yaml
 from celery import Celery
@@ -24,10 +24,19 @@ from config import STATUS_NORMALIZE
 # ── APIs OLT ─────────────────────────────────────────────────
 try:
     from jmq_olt_huawei.ma56xxt import APIMA56XXT, UserBusyError
+except ImportError:
+    APIMA56XXT = None
+
+    class UserBusyError(Exception):
+        pass
+
+try:
     from jmq_olt_zyxel.OLT1408A import APIOLT1408A
+    from jmq_olt_zyxel.OLT2406 import APIOLT2406
+    from jmq_olt_zyxel.OLT1240XA import APIOLT1240XA
 except ImportError as e:
-    APIMA56XXT = APIOLT1408A = None
-    print("IMPORT ERROR (librerías OLT):", e)
+    APIOLT1408A = APIOLT2406 = APIOLT1240XA = None
+    print("IMPORT ERROR (librerías OLT Zyxel):", e)
 
 # ── Config global ───────────────────────────────────────────
 logging.basicConfig(
@@ -52,7 +61,7 @@ _UPSERT_ONT = text("""
     INSERT INTO ont(olt_id, vendor_ont_id, serial, model, description, status, props)
     VALUES (:olt_id, :vendor_ont_id, :serial, :model, :description, :status, CAST(:props AS jsonb))
     ON CONFLICT (olt_id, vendor_ont_id)
-      DO UPDATE SET 
+      DO UPDATE SET
         status = EXCLUDED.status,
         props = EXCLUDED.props
 """)
@@ -69,6 +78,7 @@ def load_config() -> List[Dict[str, Any]]:
         cfg.update(olt)
         out.append(cfg)
     return out
+
 
 OLTS = load_config()
 
@@ -102,17 +112,38 @@ def sync_db() -> None:
 # ── Factoría de clientes ───────────────────────────────────
 def build_client(cfg: Dict[str, Any]):
     timeout = cfg.get("timeout", 5)
+    vendor = cfg["vendor"]
 
-    if cfg["vendor"] == "zyxel":
+    if vendor == "zyxel1408A":
         if APIOLT1408A is None:
-            raise ImportError("jmq_olt_zyxel no instalado")
+            raise ImportError("jmq_olt_zyxel no instalado (APIOLT1408A)")
         return APIOLT1408A(
             host=cfg["host"], port=cfg["port"],
             username=str(cfg["username"]), password=str(cfg["password"]),
             prompt=cfg["prompt"], timeout=timeout,
         )
 
-    if cfg["vendor"] == "huawei":
+    if vendor == "zyxel2406":
+        if APIOLT2406 is None:
+            raise ImportError("jmq_olt_zyxel no instalado (APIOLT2406)")
+        return APIOLT2406(
+            host=cfg["host"], port=cfg["port"],
+            username=str(cfg["username"]), password=str(cfg["password"]),
+            prompt=cfg["prompt"], timeout=timeout,
+            debug=bool(cfg.get("debug", False)),
+        )
+
+    if vendor == "zyxel1240XA":
+        if APIOLT1240XA is None:
+            raise ImportError("jmq_olt_zyxel no instalado (APIOLT1240XA)")
+        return APIOLT1240XA(
+            host=cfg["host"], port=cfg["port"],
+            username=str(cfg["username"]), password=str(cfg["password"]),
+            prompt=cfg["prompt"], timeout=timeout,
+            debug=bool(cfg.get("debug", False)),
+        )
+
+    if vendor == "huawei":
         if APIMA56XXT is None:
             raise ImportError("jmq_olt_huawei no instalado")
         return APIMA56XXT(
@@ -124,10 +155,10 @@ def build_client(cfg: Dict[str, Any]):
             snmp_port=cfg["snmp_port"],
             snmp_community=cfg["snmp_community"],
             timeout=1,
-            debug=False
+            debug=False,
         )
 
-    raise ValueError(f"Vendor no soportado: {cfg['vendor']}")
+    raise ValueError(f"Vendor no soportado: {vendor}")
 
 # ── Arranque Celery ─────────────────────────────────────────
 @app.on_after_configure.connect
@@ -143,32 +174,49 @@ def setup_periodic(sender, **_):
         )
         logging.info("Programada 'poll_%s' cada %s s", c["id"], c["poll_interval"])
 
-from typing import List, Dict, Any
+# ── Huawei scan ─────────────────────────────────────────────
 from asgiref.sync import async_to_sync
 
 def _scan_huawei(client, pon_list: List[Dict[str, Any]]) -> List[dict]:
-    # 1) abrir conexión Telnet / login
-    client.connect()      # o el método que tu cliente exponga para inicializar self.tn
+    client.connect()
 
     onts: List[dict] = []
     for pon in pon_list:
-        frame = str(pon["frame"])
         slot  = int(pon["slot"])
         port  = int(pon["port"])
-        logging.debug("Huawei: escaneando %s/%d/%d", frame, slot, port)
-        # ahora sí, get_onts ya tendrá self.tn != None
-        print(f"Escaneando {slot}, {port}")
-        slice = async_to_sync(client.get_onts)(slot, port)
-        onts.extend(slice)
+        logging.debug("Huawei: escaneando %d/%d", slot, port)
+        slice_onts = async_to_sync(client.get_onts)(slot, port)
+        onts.extend(slice_onts)
 
-    # 2) cerrar sesión si tu cliente lo soporta
     client.disconnect()
-
-    print(onts)
     return onts
+
+# ── Zyxel 1240XA scan (filters/slots) ───────────────────────
+def _scan_zyxel1240xa(client, filters: Optional[List[str]]) -> List[dict]:
+    """
+    En 1240XA se consulta por 'filter' (slots/tarjetas), ej: "1", "2".
+    - Si no se pasa lista, se usa ["1"].
+    - Se agrega el campo __filter para trazabilidad.
+    """
+    use_filters = filters or ["1"]
+
+    all_onts: List[dict] = []
+    for flt in use_filters:
+        try:
+            slice_onts = client.get_all_onts(str(flt))
+            for o in slice_onts:
+                o["__filter"] = str(flt)
+            all_onts.extend(slice_onts)
+        except Exception:
+            logging.exception("1240XA: error leyendo filter=%s", flt)
+
+    return all_onts
+
+# ── Poll ────────────────────────────────────────────────────
 @app.task
 def poll_single_olt(cfg: Dict[str, Any]) -> None:
-    logging.info("Sondeando OLT %s (%s)…", cfg["id"], cfg["vendor"])
+    vendor = cfg["vendor"]
+    logging.info("Sondeando OLT %s (%s)…", cfg["id"], vendor)
 
     # 1 ▸ crear cliente
     try:
@@ -179,12 +227,18 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
 
     # 2 ▸ consulta ONTs
     try:
-        if cfg["vendor"] == "zyxel":
+        if vendor == "zyxel1408A":
             onts = client.get_all_onts()
-        elif cfg["vendor"] == "huawei":
+        elif vendor == "zyxel2406":
+            onts = client.get_all_onts()
+        elif vendor == "zyxel1240XA":
+            # soporta ambos nombres por compat:
+            filters = cfg.get("filters") or cfg.get("slots")
+            onts = _scan_zyxel1240xa(client, filters)
+        elif vendor == "huawei":
             onts = _scan_huawei(client, cfg.get("pon_list", []))
         else:
-            logging.warning("Vendor %s no localizado", cfg["vendor"])
+            logging.warning("Vendor %s no localizado", vendor)
             return
     except UserBusyError:
         logging.warning("OLT %s ocupado, se reintentará", cfg["id"])
@@ -192,6 +246,13 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
     except Exception as exc:
         logging.exception("Error consultando %s: %s", cfg["id"], exc)
         return
+    finally:
+        # Cierre homogéneo si el cliente lo soporta (Zyxel suele exponer close()).
+        try:
+            if hasattr(client, "close"):
+                client.close()
+        except Exception:
+            logging.debug("Cierre de sesión falló (ignorado)")
 
     # 3 ▸ construye filas con metadatos y potencias
     now = dt.datetime.utcnow()
@@ -199,12 +260,14 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
 
     def to_f(val: Any) -> float:
         try:
-            return float(val)
+            if val is None:
+                return 0.0
+            return float(str(val).replace(" dBm", "").strip())
         except (TypeError, ValueError):
             return 0.0
 
     for ont in onts:
-        if cfg["vendor"] == "huawei":
+        if vendor == "huawei":
             vid = f"{ont.get('schema_fsp')}/{ont.get('id')}"
             meta = {
                 "id":           vid,
@@ -222,28 +285,48 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
             model = None
             description = ont.get("description")
 
-        elif cfg["vendor"] == "zyxel":
+        elif vendor in ("zyxel1408A", "zyxel2406", "zyxel1240XA"):
             aid = ont.get("AID")
             if not aid:
-                logging.debug("Descartado dict sin AID (Zyxel): %s", ont)
+                logging.debug("Descartado dict sin AID (%s): %s", vendor, ont)
                 continue
+
             vid = aid
+
+            # Normaliza status (puede venir como "IS", "Active", etc.)
+            raw_status = ont.get("Status")
+            raw_status_norm = str(raw_status).strip().upper() if raw_status is not None else None
+            status = STATUS_NORMALIZE[vendor].get(raw_status_norm, 98)
+
             meta = {
-                "AID":          aid,
-                "Status":       ont.get("Status"),
-                "Template-ID":  ont.get("Template-ID"),
-                "FW Version":   ont.get("FW Version"),
-                "Distance":     ont.get("Distance"),
+                "AID":         aid,
+                "Status":      raw_status,
+                "SN":          ont.get("SN"),
+                "Model":       ont.get("Model"),
+                "__vendor":    vendor,
             }
-            ptx = float(ont.get("ONT Tx") or ont.get("tx") or 0)
-            prx = float(ont.get("ONT Rx") or ont.get("rx") or 0)
-            status = STATUS_NORMALIZE["zyxel"].get(ont.get("Status"), 98)
+            # trazabilidad de filter/slot en 1240XA
+            if vendor == "zyxel1240XA" and "__filter" in ont:
+                meta["filter"] = ont.get("__filter")
+
+            # ptx/prx: por lo general Zyxel expone ONT Rx; ONT Tx puede no existir.
+            ptx = to_f(ont.get("ONT Tx") or ont.get("tx") or ont.get("Tx") or ont.get("PTX"))
+            prx = to_f(ont.get("ONT Rx") or ont.get("rx") or ont.get("Rx") or ont.get("PRX"))
+
             sn = ont.get("SN")
             model = ont.get("Model")
             description = ont.get("Description")
 
+            # Campos extra en 1408A/2406 (no siempre presentes)
+            if "Template-ID" in ont:
+                meta["Template-ID"] = ont.get("Template-ID")
+            if "FW Version" in ont:
+                meta["FW Version"] = ont.get("FW Version")
+            if "Distance" in ont:
+                meta["Distance"] = ont.get("Distance")
+
         else:
-            logging.warning("Vendor %s no soportado al procesar ONTs", cfg["vendor"])
+            logging.warning("Vendor %s no soportado al procesar ONTs", vendor)
             continue
 
         rows.append({
@@ -264,13 +347,12 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
 
     # 4 ▸ upsert en ont y bulk insert en ont_power
     with engine.begin() as conn:
-        # a) Prepara un dict por cada ONT única
+        # a) Prepara un dict por cada ONT única (dejamos el último)
         seen: Dict[str, Dict[str, Any]] = {}
         for r in rows:
-            # dejamos la última fila de cada vendor_ont_id
             seen[r["vendor_ont_id"]] = r
 
-        # b) Upsert con todos los campos necesarios
+        # b) Upsert ONTs
         for vid, r in seen.items():
             conn.execute(
                 _UPSERT_ONT,
@@ -282,7 +364,7 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
                     "description":   r["description"],
                     "status":        r["status"],
                     "props":         r["props"],
-                }
+                },
             )
 
         # c) Recupera mapping vendor_ont_id → PK ont.id
@@ -293,7 +375,7 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
                  WHERE olt_id = :olt_id
                    AND vendor_ont_id = ANY(:vids)
             """),
-            {"olt_id": cfg["id"], "vids": list(seen.keys())}
+            {"olt_id": cfg["id"], "vids": list(seen.keys())},
         ).all())
 
         # d) Inserta batch de potencias
@@ -306,6 +388,7 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
                 "status": r["status"],
             }
             for r in rows
+            if r["vendor_ont_id"] in mapping
         ]
         conn.execute(_INSERT_POWER, power_rows)
 
