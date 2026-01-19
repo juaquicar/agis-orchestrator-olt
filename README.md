@@ -122,7 +122,7 @@ defaults:
 
 olts:
   - id: zyxel-TEST
-    vendor: zyxel
+    vendor: zyxel1408A
     host: 152.170.74.208
     port: 2300
     username: admin
@@ -150,6 +150,27 @@ olts:
       - frame: "0"
         slot: 0
         port: 1
+
+  - id: zyxel1240XA-TEST
+    vendor: zyxel1240XA
+    host: 192.168.88.25
+    port: 23
+    username: admin
+    password: 1234
+    prompt: "MSC1240XA#"
+    poll_interval: 60
+    description: "Zyxel 1240XA – TEST"
+    slots: ["1", "2"]
+
+  - id: zyxel-TEST
+    vendor: zyxel2406
+    host: 192.168.88.25
+    port: 23
+    username: admin
+    password: 1234
+    prompt: "OLT1408A#"
+    description: "Zyxel 2406– TEST"
+    poll_interval: 60
 ```
 
 El contenedor monta `collector/config` en `/config` y lee `/config/olts.yaml`.

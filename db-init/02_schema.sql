@@ -15,7 +15,7 @@
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS olt (
     id            TEXT PRIMARY KEY,                           -- p.e. 'zyxel-central'
-    vendor        TEXT NOT NULL CHECK (vendor IN ('huawei','zyxel')),
+    vendor        TEXT NOT NULL CHECK (vendor IN ('huawei','zyxel', 'zyxel1408A','zyxel2406', 'zyxel1240XA')),
     host          TEXT NOT NULL,
     port          INT  NOT NULL,
     username      TEXT,

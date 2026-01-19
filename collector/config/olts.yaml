@@ -4,15 +4,7 @@ defaults:
   prompt: ">"                   # valor genérico; cada OLT puede sobre-escribirlo
 
 olts:
-  - id: zyxel-TEST
-    vendor: zyxel
-    host: 152.170.74.208
-    port: 2300
-    username: admin
-    password: 1234
-    prompt: "OLT1408A#"
-    description: "Zyxel – TEST"
-    poll_interval: 20
+
 
   - id: huawei-TEST
     vendor: huawei
@@ -31,12 +23,33 @@ olts:
         slot: 0
         port: 0
 
-  - id: zyxel1240XA-TEST
-    vendor: "zyxel1240XA"
-    host: "10.0.0.10"
+  - id: zyxel1408-TEST
+    vendor: zyxel1408A
+    host: 192.168.88.25
     port: 23
-    username: "admin"
-    password: "****"
+    username: admin
+    password: 1234
+    prompt: "OLT1408A#"
+    description: "Zyxel – TEST"
+    poll_interval: 20
+
+  - id: zyxel1240XA-TEST
+    vendor: zyxel1240XA
+    host: 192.168.88.25
+    port: 23
+    username: admin
+    password: 1234
     prompt: "MSC1240XA#"
     poll_interval: 60
+    description: "Zyxel 1240XA – TEST"
     slots: ["1", "2"]
+
+  - id: zyxel2406-TEST
+    vendor: zyxel2406
+    host: 192.168.88.25
+    port: 23
+    username: admin
+    password: 1234
+    prompt: "OLT1408A#"
+    description: "Zyxel 2406– TEST"
+    poll_interval: 60
