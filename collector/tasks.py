@@ -231,6 +231,11 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
             onts = client.get_all_onts()
         elif vendor == "zyxel2406":
             onts = client.get_all_onts()
+            aids = [o.get("AID") for o in onts if o.get("AID")]
+            logging.warning(
+                "zyxel2406 %s → onts=%d aids_first=%s aids_last=%s",
+                cfg["id"], len(onts), aids[:10], aids[-10:] if len(aids) >= 10 else aids
+            )
         elif vendor == "zyxel1240XA":
             # soporta ambos nombres por compat:
             filters = cfg.get("filters") or cfg.get("slots")

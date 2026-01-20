@@ -26,13 +26,29 @@ STATUS_NORMALIZE = {
         "OOS": 0,
         "DOWN": 0,
         "UP": 1,
+        "OOS-DG": 3,  # Sin energía
+        "OOS-LS": 2,  # Lossi
+        "OOS-NR": 1,  # NO REGISTRADA
+        "OOS-PF": 0,  # Provision fail
+        "OOS-CD": 0,  # Omci CAIDO
+        "OOS-NP": 1,  # No tiene servicios asignados
+        "OOS-SB": 1,  # StandBy
+        "O7": 1,  # Prohibida
     },
     "zyxel2406": {
         "NOT": 0,
-        "IS": 1,
+        "IS": 1, # Active
         "OOS": 0,
         "DOWN": 0,
         "UP": 1,
+        "OOS-DG": 3, # Sin energía
+        "OOS-LS": 2, # Lossi
+        "OOS-NR": 1, # NO REGISTRADA
+        "OOS-PF": 0, # Provision fail
+        "OOS-CD": 0, # Omci CAIDO
+        "OOS-NP": 1, # No tiene servicios asignados
+        "OOS-SB": 1, # StandBy
+        "O7": 1, # Prohibida
     },
 
     # Zyxel 1240XA: en outputs reales aparece "Active" (y variantes)
@@ -44,6 +60,14 @@ STATUS_NORMALIZE = {
         "IS": 1,
         "NOT": 0,
         "OOS": 0,
+        "OOS-DG": 3,  # Sin energía
+        "OOS-LS": 2,  # Lossi
+        "OOS-NR": 1,  # NO REGISTRADA
+        "OOS-PF": 0,  # Provision fail
+        "OOS-CD": 0,  # Omci CAIDO
+        "OOS-NP": 1,  # No tiene servicios asignados
+        "OOS-SB": 1,  # StandBy
+        "O7": 1,  # Prohibida
     },
 
     "huawei": {
