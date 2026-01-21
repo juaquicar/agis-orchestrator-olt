@@ -49,6 +49,25 @@
     Selecciona una OLT y una PON para cargar ONTs ubicadas en el mapa.
   </div>
 
+         <hr />
+  <h3>Buscar ONT</h3>
+
+  <div class="filter-row">
+    <label for="ont-search-q">Texto</label>
+    <input id="ont-search-q" type="text" placeholder="Ej: ont-3-1-12, 3-1-12, SN..." />
+  </div>
+
+  <div class="filter-row" style="display:flex;align-items:center;gap:8px;">
+    <input id="ont-search-only-unlocated" type="checkbox" checked />
+    <label for="ont-search-only-unlocated" style="margin:0;">Solo sin ubicar</label>
+  </div>
+
+  <div id="ont-search-results" class="search-results"></div>
+
+  <div class="help">
+    Tip: escribe 2+ caracteres. Click en un resultado para ubicar o centrar en el mapa.
+  </div>
+
   <hr />
 
   <div style="display:flex;align-items:center;justify-content:space-between;">

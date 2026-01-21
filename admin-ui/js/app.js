@@ -5,7 +5,8 @@ import {
   getPonList,
   getOntGeo,
   getUnlocatedOnts,
-  getUnlocatedGroups
+  getUnlocatedGroups,
+  searchOnts
 } from './api.js';
 
 // ───────────────── DOM refs ─────────────────
@@ -18,6 +19,13 @@ const unlocatedCountEl = document.getElementById('unlocated-count');
 const loadingOverlay = document.getElementById('loading-overlay');
 const loadingText = document.getElementById('loading-text');
 const statusText = document.getElementById('status-text');
+
+const ontSearchQEl = document.getElementById('ont-search-q');
+const ontSearchOnlyUnlocatedEl = document.getElementById('ont-search-only-unlocated');
+const ontSearchResultsEl = document.getElementById('ont-search-results');
+
+let ontMarkerById = new Map(); // ontId -> Leaflet marker
+
 
 // ───────────────── UI helpers ─────────────────
 function showLoading(msg = 'Cargando…') {
@@ -40,6 +48,106 @@ function escapeHtml(str) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
+}
+
+
+function debounce(fn, ms = 250) {
+  let t = null;
+  return (...args) => {
+    if (t) clearTimeout(t);
+    t = setTimeout(() => fn(...args), ms);
+  };
+}
+
+function renderSearchResults(items) {
+  if (!ontSearchResultsEl) return;
+  ontSearchResultsEl.innerHTML = '';
+
+  if (!items.length) {
+    ontSearchResultsEl.innerHTML = `<div class="muted" style="padding:6px 0;">Sin resultados</div>`;
+    return;
+  }
+
+  for (const o of items) {
+    const div = document.createElement('div');
+    div.className = 'ont-item';
+    const located = (o.lat != null && o.lon != null);
+    const badge = located
+      ? `<span class="tree-meta">[ubicada]</span>`
+      : `<span class="tree-meta">[sin ubicar]</span>`;
+
+    div.innerHTML = `
+      ${escapeHtml(o.vendor_ont_id)}
+      ${badge}
+      <div class="tree-meta" style="margin-top:2px;">
+        OLT ${escapeHtml(o.olt_name)} · PON ${escapeHtml(o.pon_id)}
+      </div>
+    `;
+
+    div.addEventListener('click', async () => {
+      resetSelection();
+      div.classList.add('selected');
+
+      // Si NO está ubicada: modo locate
+      if (!located) {
+        selectedOntId = o.id;
+        mode = 'locate';
+        await ensureMapFilter(o.olt_id, o.olt_name, o.pon_id, o.pon_id);
+        alert('ONT seleccionada. Haz click en el mapa para ubicarla.');
+        return;
+      }
+
+      // Si está ubicada: ir a mapa y abrir popup
+      await ensureMapFilter(o.olt_id, o.olt_name, o.pon_id, o.pon_id);
+
+      // centra mapa y abre popup
+      map.setView([o.lat, o.lon], Math.max(map.getZoom(), 18));
+
+      // asegúrate de tener markers cargados y abrir popup
+      await reloadMapOnly();
+      const mk = ontMarkerById.get(String(o.id));
+      if (mk) {
+        // cluster: “saca” el marker si está agrupado
+        ontCluster.zoomToShowLayer(mk, () => mk.openPopup());
+      }
+    });
+
+    ontSearchResultsEl.appendChild(div);
+  }
+}
+
+async function initOntSearch() {
+  if (!ontSearchQEl || !ontSearchResultsEl || !ontSearchOnlyUnlocatedEl) return;
+
+  const run = debounce(async () => {
+    const q = (ontSearchQEl.value || '').trim();
+    if (q.length < 2) {
+      ontSearchResultsEl.innerHTML = '';
+      return;
+    }
+
+    const only_unlocated = ontSearchOnlyUnlocatedEl.checked ? 1 : 0;
+
+    showLoading('Buscando ONTs…');
+    try {
+      const resp = await searchOnts({
+        q,
+        only_unlocated,
+        limit: 50,
+        offset: 0
+      });
+      const items = Array.isArray(resp?.items) ? resp.items : [];
+      renderSearchResults(items);
+    } catch (err) {
+      console.error(err);
+      ontSearchResultsEl.innerHTML = `<div class="muted" style="padding:6px 0;">Error buscando</div>`;
+    } finally {
+      hideLoading();
+    }
+  }, 250);
+
+  ontSearchQEl.addEventListener('input', run);
+  ontSearchOnlyUnlocatedEl.addEventListener('change', run);
 }
 
 // ───────────────── Estado ─────────────────
@@ -68,7 +176,7 @@ const ctoIcon = L.icon({
 });
 
 const map = L.map('map').setView([40.4168, -3.7038], 6);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+L.tileLayer('https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
   maxZoom: 22,
   attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
@@ -85,6 +193,7 @@ function bboxFromMap() {
 function clearMapOntLayers() {
   ontCluster.clearLayers();
   linkLayer.clearLayers();
+  ontMarkerById = new Map();
 }
 
 function resetSelection() {
@@ -274,6 +383,8 @@ async function reloadMapOnly() {
       if (!ontId) continue;
 
       const marker = L.marker([lat, lng], { draggable: true });
+      ontMarkerById.set(String(ontId), marker);
+
 
       marker.on('dragend', async e => {
         const { lat: newLat, lng: newLon } = e.target.getLatLng();
@@ -495,9 +606,20 @@ async function loadUnlocatedTree() {
   try {
     await loadCtos();
     await initMapFilters();
+
+    // Buscador ONTs
+    await initOntSearch();
+
+    // Árbol ONTs sin ubicar
     await loadUnlocatedTree();
+
     setStatus('Mapa: selecciona OLT + PON para cargar ONTs');
+  } catch (err) {
+    console.error(err);
+    alert('Error inicializando la UI');
+    setStatus('Error inicializando la UI');
   } finally {
     hideLoading();
   }
 })();
+

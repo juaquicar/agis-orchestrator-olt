@@ -9,14 +9,26 @@ class ApiClient {
     return { 'Content-Type': 'application/json' };
   }
 
-  async get(path, params = {}) {
-    let url = this.base + path;
-    const q = new URLSearchParams(params).toString();
-    if (q) url += `?${q}`;
-    const res = await fetch(url, { headers: this._headers() });
-    if (!res.ok) throw new Error(`GET ${path} failed: ${res.status} ${res.statusText}`);
-    return await res.json();
-  }
+    async get(path, params = {}) {
+      let url = this.base + path;
+
+      const usp = new URLSearchParams();
+      for (const [k, v] of Object.entries(params || {})) {
+        // No incluir valores undefined / null
+        if (v === undefined || v === null) continue;
+        // Opcional: si quieres ignorar strings vacíos también:
+        if (typeof v === 'string' && v.trim() === '') continue;
+
+        usp.append(k, String(v));
+      }
+
+      const q = usp.toString();
+      if (q) url += `?${q}`;
+
+      const res = await fetch(url, { headers: this._headers() });
+      if (!res.ok) throw new Error(`GET ${path} failed: ${res.status} ${res.statusText}`);
+      return await res.json();
+    }
 
   async patch(path, body) {
     const res = await fetch(this.base + path, {
@@ -60,4 +72,13 @@ export function getUnlocatedOnts({ olt_id, pon_id, limit = 200, offset = 0 }) {
 // UI: Árbol OLT->PON con counts de ONTs sin ubicar
 export function getUnlocatedGroups() {
   return API.get('/ui/unlocated/groups');
+}
+
+
+// UI: búsqueda de ONTs (por vendor_ont_id / serial)
+export function searchOnts({ q, olt_id = null, pon_id = null, only_unlocated = 1, limit = 50, offset = 0 }) {
+  const params = { q, only_unlocated, limit, offset };
+  if (olt_id) params.olt_id = olt_id;
+  if (pon_id) params.pon_id = pon_id;
+  return API.get('/ui/onts/search', params);
 }

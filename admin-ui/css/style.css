@@ -21,6 +21,12 @@ body {
   font-family: sans-serif;
 }
 
+hr {
+    margin-top: 5px;
+    margin-bottom: 15px;
+    height: 3px;
+}
+
 /* Navbar personalizado */
 #navbar {
   background-color: var(--brand-blue);
@@ -97,7 +103,7 @@ body {
 .map-logo {
   position: absolute;
   bottom: 10px;
-  left: 30px;
+  left: 270px;
   width: 120px;
   z-index: 1000;
   pointer-events: none;
@@ -128,4 +134,111 @@ body {
 .load-more {
   margin: 6px 0 6px 22px;
   padding: 6px 10px;
+}
+
+
+/* ───────────────── Buscador ONTs (sidebar) ───────────────── */
+
+#ont-search-q {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d6dbe3;
+  border-radius: 10px;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#ont-search-q:focus {
+  border-color: rgba(26, 58, 106, 0.55);
+  box-shadow: 0 0 0 3px rgba(26, 58, 106, 0.12);
+}
+
+#ont-search-only-unlocated {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brand-blue);
+}
+
+#ont-search-results {
+  margin-top: 10px;
+  background: #ffffff;
+  border: 1px solid #e6e9ef;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+  overflow: hidden;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+/* Cabecera/estado (opcional) */
+#ont-search-results .search-state {
+  padding: 10px 12px;
+  font-size: 0.92rem;
+  color: #667085;
+  border-bottom: 1px solid #eef1f6;
+  background: #fafbfc;
+}
+
+/* Ítems de búsqueda (reutiliza ont-item pero estilizado en contexto resultados) */
+#ont-search-results .ont-item {
+  margin-left: 0;            /* anula el indent del árbol */
+  padding: 10px 12px;
+  border-bottom: 1px solid #f0f2f6;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#ont-search-results .ont-item:hover {
+  background: #f7f9fd;
+}
+
+#ont-search-results .ont-item.selected {
+  background: #e8f0ff;
+  box-shadow: inset 3px 0 0 var(--brand-blue);
+}
+
+#ont-search-results .ont-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.15;
+}
+
+#ont-search-results .ont-id {
+  font-weight: 700;
+  color: #101828;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.badge.located {
+  background: #ecfdf3;
+  color: #027a48;
+  border-color: #abefc6;
+}
+
+.badge.unlocated {
+  background: #fff7ed;
+  color: #b54708;
+  border-color: #fed7aa;
+}
+
+#ont-search-results .ont-meta {
+  font-size: 0.86rem;
+  color: #667085;
+}
+
+#ont-search-results .ont-meta strong {
+  color: #344054;
+  font-weight: 700;
 }

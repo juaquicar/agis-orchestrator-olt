@@ -551,6 +551,103 @@ async def ui_list_onts(
     ]
     return UIOntList(total=int(total or 0), items=items)
 
+
+from sqlalchemy import text
+from fastapi import Query
+
+@app.get(
+    "/ui/onts/search",
+    response_model=UIOntList,
+    tags=["ui"],
+    summary="Búsqueda de ONTs por vendor_ont_id / serial (opcionalmente filtrada por OLT/PON)",
+)
+async def ui_search_onts(
+    q: str = Query(..., min_length=1, description="Texto a buscar (ILIKE)"),
+    olt_id: str | None = Query(None, description="Filtrar por OLT"),
+    pon_id: str | None = Query(None, description="Filtrar por PON derivada"),
+    only_unlocated: int = Query(1, description="1: solo sin geom (geom IS NULL)"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> UIOntList:
+    pon_expr = sql_pon_id_expr()
+
+    # Normalización simple: si el usuario busca "3-1-12" y en DB está "ont-3-1-12", también lo pillamos.
+    q_norm = q.strip()
+    like = f"%{q_norm}%"
+    like2 = f"%ont-{q_norm}%" if not q_norm.lower().startswith("ont-") else like
+
+    where = ["1=1"]
+    params = {"like": like, "like2": like2, "lim": limit, "off": offset}
+
+    # Texto: vendor_ont_id o serial
+    where.append("(o.vendor_ont_id ILIKE :like OR o.vendor_ont_id ILIKE :like2 OR COALESCE(o.serial,'') ILIKE :like)")
+
+    if olt_id:
+        where.append("o.olt_id = :olt_id")
+        params["olt_id"] = olt_id
+
+    if pon_id:
+        where.append(f"({pon_expr})::text = :pon_id")
+        params["pon_id"] = pon_id
+
+    if only_unlocated == 1:
+        where.append("o.geom IS NULL")
+
+    where_sql = " AND ".join(where)
+
+    sql_items = text(f"""
+        SELECT
+          o.id,
+          o.olt_id,
+          COALESCE(NULLIF(ol.description,''), ol.id)::text AS olt_name,
+          o.vendor_ont_id,
+          ({pon_expr})::text AS pon_id,
+          o.cto_uuid,
+          ST_Y(o.geom) AS lat,
+          ST_X(o.geom) AS lon,
+          o.status,
+          o.serial,
+          o.model,
+          o.description
+        FROM ont o
+        JOIN olt ol ON ol.id = o.olt_id
+        WHERE {where_sql}
+        ORDER BY o.id
+        LIMIT :lim OFFSET :off
+    """)
+
+    sql_total = text(f"""
+        SELECT COUNT(*)
+        FROM ont o
+        JOIN olt ol ON ol.id = o.olt_id
+        WHERE {where_sql}
+    """)
+
+    res = await db.execute(sql_items, params)
+    rows = res.fetchall()
+    total = await db.scalar(sql_total, params)
+
+    items = [
+        UIOntItem(
+            id=r.id,
+            olt_id=r.olt_id,
+            olt_name=r.olt_name,
+            vendor_ont_id=r.vendor_ont_id,
+            pon_id=r.pon_id,
+            cto_uuid=r.cto_uuid,
+            lat=r.lat,
+            lon=r.lon,
+            status=r.status,
+            serial=r.serial,
+            model=r.model,
+            description=r.description,
+        )
+        for r in rows
+    ]
+    return UIOntList(total=int(total or 0), items=items)
+
+
 @app.get(
     "/ui/onts/geo",
     tags=["ui"],
