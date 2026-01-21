@@ -6,7 +6,9 @@ import {
   getOntGeo,
   getUnlocatedOnts,
   getUnlocatedGroups,
-  searchOnts
+  searchOnts,
+  downloadOntsCsv,
+  importOntsCsv
 } from './api.js';
 
 // ───────────────── DOM refs ─────────────────
@@ -23,6 +25,12 @@ const statusText = document.getElementById('status-text');
 const ontSearchQEl = document.getElementById('ont-search-q');
 const ontSearchOnlyUnlocatedEl = document.getElementById('ont-search-only-unlocated');
 const ontSearchResultsEl = document.getElementById('ont-search-results');
+
+const btnOntsCsvDownloadEl = document.getElementById('btn-onts-csv-download');
+const ontsCsvFileEl = document.getElementById('onts-csv-file');
+const btnOntsCsvUploadEl = document.getElementById('btn-onts-csv-upload');
+const ontsCsvResultEl = document.getElementById('onts-csv-result');
+
 
 let ontMarkerById = new Map(); // ontId -> Leaflet marker
 
@@ -600,6 +608,71 @@ async function loadUnlocatedTree() {
   }
 }
 
+// -------------
+
+async function initCsvControls() {
+  if (!btnOntsCsvDownloadEl) return;
+
+  btnOntsCsvDownloadEl.addEventListener('click', async () => {
+    showLoading('Generando CSV…');
+    try {
+      const blob = await downloadOntsCsv();
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().replaceAll(':', '').replaceAll('-', '').split('.')[0];
+      a.href = url;
+      a.download = `onts_${ts}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      URL.revokeObjectURL(url);
+      if (ontsCsvResultEl) ontsCsvResultEl.textContent = 'CSV descargado.';
+    } catch (err) {
+      console.error(err);
+      if (ontsCsvResultEl) ontsCsvResultEl.textContent = 'Error descargando CSV.';
+      alert('Error descargando CSV');
+    } finally {
+      hideLoading();
+    }
+  });
+
+  if (btnOntsCsvUploadEl && ontsCsvFileEl) {
+    btnOntsCsvUploadEl.addEventListener('click', async () => {
+      const file = ontsCsvFileEl.files && ontsCsvFileEl.files[0];
+      if (!file) {
+        alert('Selecciona un CSV primero.');
+        return;
+      }
+
+      showLoading('Importando CSV…');
+      try {
+        const resp = await importOntsCsv(file);
+
+        const errCount = Array.isArray(resp?.errors) ? resp.errors.length : 0;
+        const msg = `Importación: procesadas=${resp.processed ?? 0}, insertadas=${resp.inserted ?? 0}, actualizadas=${resp.updated ?? 0}, omitidas=${resp.skipped ?? 0}, errores=${errCount}`;
+        if (ontsCsvResultEl) ontsCsvResultEl.textContent = msg;
+
+        if (errCount) {
+          console.warn('Errores import CSV', resp.errors);
+          alert(`Importación completada con ${errCount} errores. Revisa consola.`);
+        }
+
+        await loadUnlocatedTree();
+        await reloadMapOnly();
+      } catch (err) {
+        console.error(err);
+        if (ontsCsvResultEl) ontsCsvResultEl.textContent = 'Error importando CSV.';
+        alert('Error importando CSV');
+      } finally {
+        hideLoading();
+      }
+    });
+  }
+}
+
+
 // ───────────────── Bootstrap ─────────────────
 (async function bootstrap() {
   showLoading('Inicializando…');
@@ -612,6 +685,10 @@ async function loadUnlocatedTree() {
 
     // Árbol ONTs sin ubicar
     await loadUnlocatedTree();
+
+    // Export CSV
+    await initCsvControls();
+
 
     setStatus('Mapa: selecciona OLT + PON para cargar ONTs');
   } catch (err) {

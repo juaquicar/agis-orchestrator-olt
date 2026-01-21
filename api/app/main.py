@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import json
+import csv
+import io
+
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 
 from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import UploadFile, File
+from fastapi.responses import StreamingResponse
+
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -721,6 +727,290 @@ async def ui_geo_onts(
         })
 
     return {"type": "FeatureCollection", "features": features}
+
+# ───────────────────────── UI ADMIN: CSV IMPORT/EXPORT ─────────────────────────
+
+UI_ONT_CSV_COLUMNS = [
+    "id",
+    "olt_id",
+    "vendor_ont_id",
+    "cto_uuid",
+    "x",
+    "y",
+    "serial",
+    "model",
+    "description",
+    "status",
+]
+
+_MISSING = object()
+
+def _norm_cell(v: str | None) -> str:
+    return (v or "").strip()
+
+def _parse_nullable_str(v: str | None):
+    s = _norm_cell(v)
+    if s == "":
+        return _MISSING
+    if s.lower() == "null":
+        return None
+    return s
+
+def _parse_nullable_int(v: str | None):
+    s = _norm_cell(v)
+    if s == "":
+        return _MISSING
+    if s.lower() == "null":
+        return None
+    try:
+        return int(s)
+    except ValueError:
+        raise ValueError(f"valor entero inválido: {s!r}")
+
+def _parse_nullable_float(v: str | None):
+    s = _norm_cell(v)
+    if s == "":
+        return _MISSING
+    if s.lower() == "null":
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        raise ValueError(f"valor float inválido: {s!r}")
+
+@app.get(
+    "/ui/onts/csv",
+    tags=["ui"],
+    summary="Exportar todas las ONTs a CSV (admin-ui)",
+    response_description="CSV con columnas fijas para edición/importación",
+)
+async def ui_export_onts_csv(db: AsyncSession = Depends(get_db)):
+    sql = text("""
+        SELECT
+          o.id,
+          o.olt_id,
+          o.vendor_ont_id,
+          o.cto_uuid,
+          ST_X(o.geom) AS x,
+          ST_Y(o.geom) AS y,
+          o.serial,
+          o.model,
+          o.description,
+          o.status
+        FROM ont o
+        ORDER BY o.olt_id, o.id
+    """)
+    res = await db.execute(sql)
+    rows = res.fetchall()
+
+    def iter_csv():
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(UI_ONT_CSV_COLUMNS)
+        yield buf.getvalue()
+        buf.seek(0); buf.truncate(0)
+
+        for r in rows:
+            w.writerow([
+                r.id,
+                r.olt_id,
+                r.vendor_ont_id,
+                r.cto_uuid or "",
+                "" if r.x is None else r.x,   # x = lon
+                "" if r.y is None else r.y,   # y = lat
+                r.serial or "",
+                r.model or "",
+                r.description or "",
+                "" if r.status is None else r.status,
+            ])
+            yield buf.getvalue()
+            buf.seek(0); buf.truncate(0)
+
+    filename = f"onts_{datetime.utcnow():%Y%m%d_%H%M%S}.csv"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(iter_csv(), media_type="text/csv; charset=utf-8", headers=headers)
+
+@app.post(
+    "/ui/onts/csv/import",
+    tags=["ui"],
+    summary="Importar ONTs desde CSV (update por id / insert si no hay id)",
+)
+async def ui_import_onts_csv(
+    file: UploadFile = File(..., description="CSV con columnas: " + ", ".join(UI_ONT_CSV_COLUMNS)),
+    db: AsyncSession = Depends(get_db),
+):
+    raw = await file.read()
+    try:
+        text_csv = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(400, "El CSV debe estar en UTF-8 (se acepta UTF-8 con BOM)")
+
+    reader = csv.DictReader(io.StringIO(text_csv))
+    if not reader.fieldnames:
+        raise HTTPException(400, "CSV vacío o sin cabecera")
+
+    missing_cols = [c for c in UI_ONT_CSV_COLUMNS if c not in reader.fieldnames]
+    if missing_cols:
+        raise HTTPException(400, f"Faltan columnas en CSV: {', '.join(missing_cols)}")
+
+    processed = inserted = updated = skipped = 0
+    errors: list[dict] = []
+
+    async def _select_existing_id(olt_id: str, vendor_ont_id: str) -> int | None:
+        return await db.scalar(
+            text("SELECT id FROM ont WHERE olt_id = :olt_id AND vendor_ont_id = :vendor_ont_id"),
+            {"olt_id": olt_id, "vendor_ont_id": vendor_ont_id},
+        )
+
+    for line_no, row in enumerate(reader, start=2):
+        processed += 1
+        try:
+            id_cell = _norm_cell(row.get("id"))
+            ont_id = int(id_cell) if id_cell != "" else None
+
+            olt_id = _parse_nullable_str(row.get("olt_id"))
+            vendor_ont_id = _parse_nullable_str(row.get("vendor_ont_id"))
+
+            cto_uuid = _parse_nullable_str(row.get("cto_uuid"))
+            x = _parse_nullable_float(row.get("x"))
+            y = _parse_nullable_float(row.get("y"))
+            serial = _parse_nullable_str(row.get("serial"))
+            model = _parse_nullable_str(row.get("model"))
+            description = _parse_nullable_str(row.get("description"))
+            status = _parse_nullable_int(row.get("status"))
+
+            # geom: ambos vacíos => no tocar; ambos 'null' => NULL; ambos num => point
+            geom_action = _MISSING
+            if x is _MISSING and y is _MISSING:
+                geom_action = _MISSING
+            elif x is None and y is None:
+                geom_action = None
+            elif isinstance(x, float) and isinstance(y, float):
+                geom_action = ("point", x, y)
+            else:
+                raise ValueError("x/y deben venir ambos vacíos, ambos 'null', o ambos numéricos")
+
+            # UPDATE por id
+            if ont_id is not None:
+                updates = []
+                params = {"id": ont_id}
+
+                if olt_id is not _MISSING:
+                    updates.append("olt_id = :olt_id")
+                    params["olt_id"] = olt_id
+                if vendor_ont_id is not _MISSING:
+                    updates.append("vendor_ont_id = :vendor_ont_id")
+                    params["vendor_ont_id"] = vendor_ont_id
+
+                if cto_uuid is not _MISSING:
+                    updates.append("cto_uuid = :cto_uuid")
+                    params["cto_uuid"] = cto_uuid
+
+                if geom_action is None:
+                    updates.append("geom = NULL")
+                elif isinstance(geom_action, tuple) and geom_action[0] == "point":
+                    updates.append("geom = ST_SetSRID(ST_Point(:x, :y), 4326)")
+                    params["x"] = geom_action[1]
+                    params["y"] = geom_action[2]
+
+                if serial is not _MISSING:
+                    updates.append("serial = :serial")
+                    params["serial"] = serial
+                if model is not _MISSING:
+                    updates.append("model = :model")
+                    params["model"] = model
+                if description is not _MISSING:
+                    updates.append("description = :description")
+                    params["description"] = description
+                if status is not _MISSING:
+                    updates.append("status = :status")
+                    params["status"] = status
+
+                if not updates:
+                    skipped += 1
+                    continue
+
+                q = text(f"UPDATE ont SET {', '.join(updates)} WHERE id = :id")
+                r = await db.execute(q, params)
+                if (r.rowcount or 0) == 0:
+                    raise ValueError(f"ONT id={ont_id} no existe")
+                updated += 1
+                continue
+
+            # INSERT/UPSERT (sin id)
+            if olt_id is _MISSING or olt_id is None:
+                raise ValueError("olt_id es obligatorio cuando no hay id")
+            if vendor_ont_id is _MISSING or vendor_ont_id is None:
+                raise ValueError("vendor_ont_id es obligatorio cuando no hay id")
+
+            existed_before = await _select_existing_id(olt_id, vendor_ont_id)
+
+            cols = ["olt_id", "vendor_ont_id"]
+            vals = [":olt_id", ":vendor_ont_id"]
+            params = {"olt_id": olt_id, "vendor_ont_id": vendor_ont_id}
+            set_clauses = []
+
+            if cto_uuid is not _MISSING:
+                cols.append("cto_uuid"); vals.append(":cto_uuid"); params["cto_uuid"] = cto_uuid
+                set_clauses.append("cto_uuid = EXCLUDED.cto_uuid")
+
+            if geom_action is None:
+                cols.append("geom"); vals.append("NULL")
+                set_clauses.append("geom = NULL")
+            elif isinstance(geom_action, tuple) and geom_action[0] == "point":
+                cols.append("geom"); vals.append("ST_SetSRID(ST_Point(:x, :y), 4326)")
+                params["x"] = geom_action[1]; params["y"] = geom_action[2]
+                set_clauses.append("geom = EXCLUDED.geom")
+
+            if serial is not _MISSING:
+                cols.append("serial"); vals.append(":serial"); params["serial"] = serial
+                set_clauses.append("serial = EXCLUDED.serial")
+            if model is not _MISSING:
+                cols.append("model"); vals.append(":model"); params["model"] = model
+                set_clauses.append("model = EXCLUDED.model")
+            if description is not _MISSING:
+                cols.append("description"); vals.append(":description"); params["description"] = description
+                set_clauses.append("description = EXCLUDED.description")
+            if status is not _MISSING:
+                cols.append("status"); vals.append(":status"); params["status"] = status
+                set_clauses.append("status = EXCLUDED.status")
+
+            insert_sql = f"INSERT INTO ont ({', '.join(cols)}) VALUES ({', '.join(vals)})"
+
+            if set_clauses:
+                insert_sql += f" ON CONFLICT (olt_id, vendor_ont_id) DO UPDATE SET {', '.join(set_clauses)} RETURNING id"
+                await db.execute(text(insert_sql), params)
+
+                if existed_before is None:
+                    inserted += 1
+                else:
+                    updated += 1
+            else:
+                insert_sql += " ON CONFLICT (olt_id, vendor_ont_id) DO NOTHING RETURNING id"
+                r = await db.execute(text(insert_sql), params)
+                new_id = r.scalar()
+                if new_id is None:
+                    skipped += 1
+                else:
+                    inserted += 1
+
+        except Exception as e:
+            errors.append({
+                "line": line_no,
+                "error": str(e),
+                "row": {k: row.get(k) for k in UI_ONT_CSV_COLUMNS},
+            })
+
+    await db.commit()
+    return {
+        "ok": len(errors) == 0,
+        "processed": processed,
+        "inserted": inserted,
+        "updated": updated,
+        "skipped": skipped,
+        "errors": errors,
+    }
+
 
 # ───────────────────────── UI ADMIN: UNLOCATED TREE ─────────────────────────
 

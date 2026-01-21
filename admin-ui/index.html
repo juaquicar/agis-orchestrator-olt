@@ -49,6 +49,7 @@
     Selecciona una OLT y una PON para cargar ONTs ubicadas en el mapa.
   </div>
 
+
          <hr />
   <h3>Buscar ONT</h3>
 
@@ -77,8 +78,22 @@
 
   <div id="unlocated-tree"></div>
 
-  <!-- si tenías lista plana antigua, elimínala para evitar confusiones -->
-  <!-- <ul id="unlocated-list"></ul> -->
+         <hr />
+<h3>CSV ONTs</h3>
+
+<button id="btn-onts-csv-download" class="btn" style="width:100%;">Descargar CSV de ONTs</button>
+
+<div class="filter-row" style="margin-top:10px;">
+  <label for="onts-csv-file">Importar CSV</label>
+  <input id="onts-csv-file" type="file" accept=".csv,text/csv" />
+</div>
+
+<button id="btn-onts-csv-upload" class="btn" style="width:100%;">Importar y aplicar cambios</button>
+
+<div id="onts-csv-result" class="muted" style="margin-top:6px;"></div>
+
+
+
 </div>
 
 

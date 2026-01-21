@@ -82,3 +82,28 @@ export function searchOnts({ q, olt_id = null, pon_id = null, only_unlocated = 1
   if (pon_id) params.pon_id = pon_id;
   return API.get('/ui/onts/search', params);
 }
+
+
+//
+// UI: CSV import/export ONTs
+//
+export async function downloadOntsCsv() {
+  const res = await fetch('/api/ui/onts/csv');
+  if (!res.ok) throw new Error(`GET /ui/onts/csv failed: ${res.status} ${res.statusText}`);
+  return await res.blob();
+}
+
+export async function importOntsCsv(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+
+  const res = await fetch('/api/ui/onts/csv/import', {
+    method: 'POST',
+    body: fd,
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`POST /ui/onts/csv/import failed: ${res.status} ${res.statusText} ${txt}`);
+  }
+  return await res.json();
+}
