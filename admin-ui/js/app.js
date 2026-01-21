@@ -58,6 +58,20 @@ function escapeHtml(str) {
     .replaceAll("'", '&#039;');
 }
 
+function getONTBounds() {
+  if (!ontCluster) return null;
+  if (!ontCluster.getLayers || ontCluster.getLayers().length === 0) return null;
+
+  const b = ontCluster.getBounds();
+  return (b && b.isValid && b.isValid()) ? b : null;
+}
+
+function fitToONTs() {
+  const b = getONTBounds();
+  if (b) map.fitBounds(b.pad(0.15));
+}
+
+
 
 function debounce(fn, ms = 250) {
   let t = null;
@@ -157,6 +171,45 @@ async function initOntSearch() {
   ontSearchQEl.addEventListener('input', run);
   ontSearchOnlyUnlocatedEl.addEventListener('change', run);
 }
+
+
+function getCTOBounds() {
+  if (!ctoLayer) return null;
+
+  const bounds = L.latLngBounds([]);
+  let any = false;
+
+  // Recorre lo que haya dentro: puede ser GeoJSON layer, marker, featureGroup, etc.
+  ctoLayer.eachLayer((lyr) => {
+    if (!lyr) return;
+
+    // Si es un marker
+    if (typeof lyr.getLatLng === 'function') {
+      bounds.extend(lyr.getLatLng());
+      any = true;
+      return;
+    }
+
+    // Si es GeoJSON / FeatureGroup / LayerGroup con bounds
+    if (typeof lyr.getBounds === 'function') {
+      const b = lyr.getBounds();
+      if (b && b.isValid && b.isValid()) {
+        bounds.extend(b);
+        any = true;
+      }
+      return;
+    }
+  });
+
+  return (any && bounds.isValid()) ? bounds : null;
+}
+
+function fitToCTOs() {
+  const b = getCTOBounds();
+  if (b) map.fitBounds(b.pad(0.15));
+}
+
+
 
 // ───────────────── Estado ─────────────────
 const PAGE_SIZE = 200;
@@ -678,6 +731,7 @@ async function initCsvControls() {
   showLoading('Inicializando…');
   try {
     await loadCtos();
+    fitToCTOs();
     await initMapFilters();
 
     // Buscador ONTs
@@ -699,4 +753,144 @@ async function initCsvControls() {
     hideLoading();
   }
 })();
+
+
+// ───────────────── Plugins Leaflet (geocoder / fullscreen / locate / full view) ─────────────────
+let _searchMarker = null;
+
+function fitToData() {
+  const bounds = L.latLngBounds([]);
+  let any = false;
+
+  // CTOs
+  try {
+    const ctos = ctoLayer.getLayers ? ctoLayer.getLayers() : [];
+    for (const lyr of ctos) {
+      if (lyr && lyr.getLatLng) {
+        bounds.extend(lyr.getLatLng());
+        any = true;
+      }
+    }
+  } catch (e) {}
+
+  // ONTs visibles (cluster)
+  try {
+    if (ontCluster && ontCluster.getLayers && ontCluster.getLayers().length) {
+      const b = ontCluster.getBounds();
+      if (b && b.isValid && b.isValid()) {
+        bounds.extend(b);
+        any = true;
+      }
+    }
+  } catch (e) {}
+
+  if (any && bounds.isValid()) {
+    map.fitBounds(bounds.pad(0.15));
+  } else {
+    // fallback: vista España (tu default actual)
+    // fallback: encuadrar CTOs si existen; si no, España
+    const b = getCTOBounds();
+    if (b) {
+      map.fitBounds(b.pad(0.15));
+    } else {
+      map.setView([40.4168, -3.7038], 6);
+    }
+
+  }
+}
+
+function addLeafletPlugins() {
+  // Escala métrica
+  L.control.scale({ imperial: false }).addTo(map);
+
+  // Fullscreen
+  if (L.Control && L.Control.Fullscreen) {
+    map.addControl(new L.Control.Fullscreen({ position: 'topleft' }));
+  }
+
+  // Geocoder (Nominatim)
+  if (L.Control && L.Control.Geocoder) {
+    const geocoder = L.Control.geocoder({
+      position: 'topleft',
+      defaultMarkGeocode: false,
+      geocoder: L.Control.Geocoder.nominatim(),
+      placeholder: 'Buscar dirección…'
+    }).addTo(map);
+
+    geocoder.on('markgeocode', (e) => {
+      const g = e.geocode;
+      if (!g) return;
+
+      // encuadra el bbox si existe; si no, centra
+      if (g.bbox) {
+        map.fitBounds(g.bbox, { padding: [20, 20] });
+      } else if (g.center) {
+        map.setView(g.center, Math.max(map.getZoom(), 16));
+      }
+
+      // marcador temporal de resultado
+      if (_searchMarker) map.removeLayer(_searchMarker);
+      const center = g.center || (g.bbox ? g.bbox.getCenter() : null);
+      if (center) {
+        _searchMarker = L.marker(center);
+        _searchMarker.addTo(map).bindPopup(g.name || 'Resultado').openPopup();
+      }
+    });
+  }
+
+  // Locate (Mi ubicación)
+  // Nota: en HTTP o en algunos navegadores, geolocalización puede estar bloqueada; en HTTPS suele ir bien.
+  if (L.control && L.control.locate) {
+    L.control.locate({
+      position: 'topleft',
+      flyTo: true,
+      keepCurrentZoomLevel: false,
+      strings: { title: 'Mi ubicación' },
+      locateOptions: { enableHighAccuracy: true }
+    }).addTo(map);
+  }
+
+  // Full view / encuadrar datos
+// Botón encuadrar CTOs
+if (L.easyButton) {
+
+
+  // Botón encuadrar ONTs (visibles)
+  L.easyButton({
+    position: 'topleft',
+    states: [{
+      stateName: 'fit-onts',
+      title: 'Encuadrar CTOs visibles',
+      icon: 'ON',
+      onClick: () => {
+        const b = getONTBounds();
+        if (b) map.fitBounds(b.pad(0.15));
+        else fitToCTOs(); // fallback útil: si no hay ONTs cargadas, vuelve a CTOs
+      }
+    }]
+  }).addTo(map);
+} else {
+    // Fallback simple sin easyButton (por si no cargara el plugin)
+    const FitControl = L.Control.extend({
+      options: { position: 'topleft' },
+      onAdd: function () {
+        const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+        const a = L.DomUtil.create('a', '', div);
+        a.href = '#';
+        a.title = 'Encuadrar CTOs + ONTs';
+        a.innerHTML = '⤢';
+        L.DomEvent.disableClickPropagation(div);
+        L.DomEvent.on(a, 'click', (e) => {
+          L.DomEvent.preventDefault(e);
+          fitToData();
+        });
+        return div;
+      }
+    });
+    map.addControl(new FitControl());
+  }
+}
+
+// Llamar una sola vez tras inicializar el mapa/capas
+addLeafletPlugins();
 
