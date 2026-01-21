@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css"/>
 
-  <!-- Tu CSS puro -->
+  <!-- Tu CSS -->
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -20,9 +20,7 @@
     <div class="navbar-container">
       <span class="brand">aGIS OLT Orchestrator</span>
       <nav>
-        <ul class="nav-links">
-
-        </ul>
+        <ul class="nav-links"></ul>
       </nav>
     </div>
   </header>
@@ -30,21 +28,67 @@
   <!-- Contenedor principal -->
   <div id="container">
     <!-- Sidebar -->
-    <aside id="sidebar">
-      <h3>ONTs sin ubicar</h3>
-      <ul id="unlocated-list"></ul>
-    </aside>
+    <div id="sidebar">
+  <h3>Filtro mapa</h3>
 
-    <!-- Mapa -->
-    <main id="map"></main>
+  <div class="filter-row">
+    <label for="map-olt-select">OLT</label>
+    <select id="map-olt-select">
+      <option value="">-- Selecciona OLT --</option>
+    </select>
+  </div>
+
+  <div class="filter-row">
+    <label for="map-pon-select">PON</label>
+    <select id="map-pon-select" disabled>
+      <option value="">-- Selecciona PON --</option>
+    </select>
+  </div>
+
+  <div class="help">
+    Selecciona una OLT y una PON para cargar ONTs ubicadas en el mapa.
+  </div>
+
+  <hr />
+
+  <div style="display:flex;align-items:center;justify-content:space-between;">
+    <h3 style="margin:0;">ONTs sin ubicar</h3>
+    <span id="unlocated-count" class="muted"></span>
+  </div>
+
+  <div id="unlocated-tree"></div>
+
+  <!-- si tenías lista plana antigua, elimínala para evitar confusiones -->
+  <!-- <ul id="unlocated-list"></ul> -->
+</div>
+
+
+    <!-- Mapa wrapper -->
+    <main id="map-wrapper" style="flex:1;position:relative;">
+      <div id="map" style="height:100%;"></div>
+
+      <!-- Loading overlay -->
+      <div id="loading-overlay" class="loading hidden">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loading-text">Cargando…</div>
+      </div>
+
+      <!-- Status bar -->
+      <div id="status-bar"
+           style="position:absolute;top:10px;right:10px;z-index:1200;background:rgba(255,255,255,0.9);padding:8px 10px;border-radius:6px;border:1px solid #ddd;font-size:0.9rem;color:#333;">
+        <span id="status-text">Sin filtro</span>
+      </div>
+    </main>
   </div>
 
   <!-- Logo en la esquina inferior izquierda del mapa -->
   <img src="img/AGIS_COLOR_SINFONDO.png" alt="Logo AGIS" class="map-logo">
 
-  <!-- Sólo Leaflet y tu código -->
+  <!-- Leaflet -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+
+  <!-- App -->
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

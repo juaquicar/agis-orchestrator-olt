@@ -102,3 +102,30 @@ body {
   z-index: 1000;
   pointer-events: none;
 }
+
+
+#unlocated-tree details { margin: 8px 0; }
+#unlocated-tree summary { cursor: pointer; user-select: none; }
+.tree-olt > summary { font-weight: 700; }
+.tree-pon > summary { font-weight: 600; padding-left: 10px; }
+
+.ont-item {
+  padding: 6px 10px;
+  margin-left: 22px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+}
+.ont-item:hover { background: #f6f8fb; }
+.ont-item.selected { background: #e8f0ff; }
+
+.tree-meta {
+  color:#666;
+  font-weight: 500;
+  font-size: 0.85rem;
+  margin-left: 6px;
+}
+
+.load-more {
+  margin: 6px 0 6px 22px;
+  padding: 6px 10px;
+}

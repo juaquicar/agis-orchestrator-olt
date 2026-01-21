@@ -373,3 +373,311 @@ async def get_ont_metrics(
     result = await db.execute(sql, params)
     rows = result.fetchall()
     return [OntMetricResponse(**r._mapping) for r in rows]
+
+
+### Nuevas APIs para ADMIN-UI que no alteran las anteriores que usa aGIS.
+
+from typing import Optional
+
+class UIItem(BaseModel):
+    id: str
+    name: str
+
+class UIList(BaseModel):
+    items: List[UIItem]
+
+class UIOntItem(BaseModel):
+    id: int
+    olt_id: str
+    olt_name: str
+    vendor_ont_id: str
+    pon_id: str
+    cto_uuid: Optional[str] = None
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    status: Optional[int] = None
+    serial: Optional[str] = None
+    model: Optional[str] = None
+    description: Optional[str] = None
+
+class UIOntList(BaseModel):
+    total: int
+    items: List[UIOntItem]
+
+
+def sql_pon_id_expr() -> str:
+    """
+    Deriva el 'pon_id' a partir de ont.vendor_ont_id + olt.vendor.
+    - huawei:        CHASIS/SLOT/PON/ID -> CHASIS/SLOT/PON
+    - zyxel2406/1240XA: (ont-)SLOT-PON-ID -> SLOT-PON
+    - zyxel1408A:    (ont-)PON-ID -> PON
+    Nota: se elimina prefijo ^ont- si existe.
+    """
+    return r"""
+    CASE
+      WHEN ol.vendor = 'huawei' THEN
+        split_part(o.vendor_ont_id, '/', 1) || '/' ||
+        split_part(o.vendor_ont_id, '/', 2) || '/' ||
+        split_part(o.vendor_ont_id, '/', 3)
+
+      WHEN ol.vendor IN ('zyxel2406','zyxel1240XA') THEN
+        split_part(regexp_replace(o.vendor_ont_id, '^ont-', ''), '-', 1) || '-' ||
+        split_part(regexp_replace(o.vendor_ont_id, '^ont-', ''), '-', 2)
+
+      WHEN ol.vendor IN ('zyxel1408A','zyxel') THEN
+        split_part(regexp_replace(o.vendor_ont_id, '^ont-', ''), '-', 1)
+
+      ELSE
+        -- fallback: si tiene '/', asume huawei-like; si tiene '-', usa primer token
+        CASE
+          WHEN position('/' in o.vendor_ont_id) > 0 THEN
+            split_part(o.vendor_ont_id, '/', 1) || '/' ||
+            split_part(o.vendor_ont_id, '/', 2) || '/' ||
+            split_part(o.vendor_ont_id, '/', 3)
+          ELSE
+            split_part(regexp_replace(o.vendor_ont_id, '^ont-', ''), '-', 1)
+        END
+    END
+    """
+
+
+@app.get("/ui/olts", response_model=UIList, tags=["ui"], summary="Listado de OLTs (admin-ui)")
+async def ui_list_olts(db: AsyncSession = Depends(get_db)) -> UIList:
+    sql = text("""
+        SELECT
+          id::text AS id,
+          COALESCE(NULLIF(description,''), id)::text AS name
+        FROM olt
+        ORDER BY id
+    """)
+    res = await db.execute(sql)
+    items = [UIItem(id=r.id, name=r.name) for r in res.fetchall()]
+    return UIList(items=items)
+
+
+@app.get("/ui/olts/{olt_id}/pons", response_model=UIList, tags=["ui"], summary="Listado de PONs por OLT (derivado)")
+async def ui_list_pons(
+    olt_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> UIList:
+    pon_expr = sql_pon_id_expr()
+    sql = text(f"""
+        SELECT DISTINCT
+          ({pon_expr})::text AS id,
+          ({pon_expr})::text AS name
+        FROM ont o
+        JOIN olt ol ON ol.id = o.olt_id
+        WHERE o.olt_id = :olt_id
+        ORDER BY id
+    """)
+    res = await db.execute(sql, {"olt_id": olt_id})
+    items = [UIItem(id=r.id, name=r.name) for r in res.fetchall()]
+    return UIList(items=items)
+
+
+@app.get(
+    "/ui/onts",
+    response_model=UIOntList,
+    tags=["ui"],
+    summary="Listado paginado de ONTs filtrado por OLT+PON (pensado para 'sin ubicar')",
+)
+async def ui_list_onts(
+    olt_id: str = Query(..., description="ID de la OLT"),
+    pon_id: str = Query(..., description="ID de PON derivado (selector)"),
+    only_unlocated: int = Query(0, description="1 para solo ONTs sin geom (geom IS NULL)"),
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> UIOntList:
+    pon_expr = sql_pon_id_expr()
+
+    where_unlocated = "AND o.geom IS NULL" if only_unlocated == 1 else ""
+
+    sql_items = text(f"""
+        SELECT
+          o.id,
+          o.olt_id,
+          COALESCE(NULLIF(ol.description,''), ol.id)::text AS olt_name,
+          o.vendor_ont_id,
+          ({pon_expr})::text AS pon_id,
+          o.cto_uuid,
+          ST_Y(o.geom) AS lat,
+          ST_X(o.geom) AS lon,
+          o.status,
+          o.serial,
+          o.model,
+          o.description
+        FROM ont o
+        JOIN olt ol ON ol.id = o.olt_id
+        WHERE o.olt_id = :olt_id
+          AND ({pon_expr})::text = :pon_id
+          {where_unlocated}
+        ORDER BY o.id
+        LIMIT :lim OFFSET :off
+    """)
+
+    sql_total = text(f"""
+        SELECT COUNT(*)
+        FROM ont o
+        JOIN olt ol ON ol.id = o.olt_id
+        WHERE o.olt_id = :olt_id
+          AND ({pon_expr})::text = :pon_id
+          {where_unlocated}
+    """)
+
+    params = {"olt_id": olt_id, "pon_id": pon_id, "lim": limit, "off": offset}
+
+    res = await db.execute(sql_items, params)
+    rows = res.fetchall()
+
+    total = await db.scalar(sql_total, {"olt_id": olt_id, "pon_id": pon_id})
+
+    items = [
+        UIOntItem(
+            id=r.id,
+            olt_id=r.olt_id,
+            olt_name=r.olt_name,
+            vendor_ont_id=r.vendor_ont_id,
+            pon_id=r.pon_id,
+            cto_uuid=r.cto_uuid,
+            lat=r.lat,
+            lon=r.lon,
+            status=r.status,
+            serial=r.serial,
+            model=r.model,
+            description=r.description,
+        )
+        for r in rows
+    ]
+    return UIOntList(total=int(total or 0), items=items)
+
+@app.get(
+    "/ui/onts/geo",
+    tags=["ui"],
+    summary="GeoJSON de ONTs en BBOX filtrado por OLT+PON (admin-ui)",
+    response_description="GeoJSON FeatureCollection"
+)
+async def ui_geo_onts(
+    bbox: str = Query(..., description="minLon,minLat,maxLon,maxLat"),
+    olt_id: str | None = Query(None, description="ID de la OLT"),
+    pon_id: str | None = Query(None, description="ID de la PON derivada"),
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    # Protección de rendimiento: sin OLT+PON -> vacío
+    if not olt_id or not pon_id:
+        return {"type": "FeatureCollection", "features": []}
+
+    minx, miny, maxx, maxy = parse_bbox(bbox)
+    pon_expr = sql_pon_id_expr()
+
+    sql = text(f"""
+        SELECT
+          o.id,
+          o.olt_id,
+          COALESCE(NULLIF(ol.description,''), ol.id)::text AS olt_name,
+          o.vendor_ont_id,
+          ({pon_expr})::text AS pon_id,
+          o.status,
+          o.cto_uuid,
+          o.description,
+          o.model,
+          o.serial,
+          ST_AsGeoJSON(o.geom) AS geom
+        FROM ont o
+        JOIN olt ol ON ol.id = o.olt_id
+        WHERE o.geom IS NOT NULL
+          AND o.olt_id = :olt_id
+          AND ({pon_expr})::text = :pon_id
+          AND ST_Intersects(
+                o.geom,
+                ST_MakeEnvelope(:minx, :miny, :maxx, :maxy, 4326)
+              )
+        ORDER BY o.id
+    """)
+
+    res = await db.execute(sql, {
+        "minx": minx, "miny": miny, "maxx": maxx, "maxy": maxy,
+        "olt_id": olt_id, "pon_id": pon_id
+    })
+    rows = res.fetchall()
+
+    features: List[Dict[str, Any]] = []
+    for r in rows:
+        if not r.geom:
+            continue
+        features.append({
+            "type": "Feature",
+            "geometry": json.loads(r.geom),
+            "properties": {
+                "ont_id": r.id,
+                "id": r.id,
+                "olt_id": r.olt_id,
+                "olt_name": r.olt_name,
+                "pon_id": r.pon_id,
+                "vendor_ont_id": r.vendor_ont_id,
+                "status": r.status,
+                "cto_uuid": r.cto_uuid,
+                "description": r.description,
+                "model": r.model,
+                "serial": r.serial,
+            }
+        })
+
+    return {"type": "FeatureCollection", "features": features}
+
+# ───────────────────────── UI ADMIN: UNLOCATED TREE ─────────────────────────
+
+class UIPonGroup(BaseModel):
+    id: str
+    name: str
+    count: int
+
+class UIOltGroup(BaseModel):
+    olt_id: str
+    olt_name: str
+    count: int
+    pons: List[UIPonGroup]
+
+class UIUnlocatedGroups(BaseModel):
+    items: List[UIOltGroup]
+
+@app.get(
+    "/ui/unlocated/groups",
+    response_model=UIUnlocatedGroups,
+    tags=["ui"],
+    summary="Jerarquía OLT->PON con counts de ONTs sin ubicar (geom IS NULL)",
+)
+async def ui_unlocated_groups(db: AsyncSession = Depends(get_db)) -> UIUnlocatedGroups:
+    pon_expr = sql_pon_id_expr()
+
+    # OJO: repetimos la expresión de olt_name en GROUP BY (no alias)
+    sql = text(f"""
+        SELECT
+          o.olt_id::text AS olt_id,
+          COALESCE(NULLIF(ol.description,''), ol.id)::text AS olt_name,
+          ({pon_expr})::text AS pon_id,
+          COUNT(*)::int AS cnt
+        FROM ont o
+        JOIN olt ol ON ol.id = o.olt_id
+        WHERE o.geom IS NULL
+        GROUP BY
+          o.olt_id,
+          COALESCE(NULLIF(ol.description,''), ol.id),
+          ({pon_expr})
+        ORDER BY o.olt_id, pon_id
+    """)
+
+    res = await db.execute(sql)
+    rows = res.fetchall()
+
+    tree: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        key = r.olt_id
+        if key not in tree:
+            tree[key] = {"olt_id": r.olt_id, "olt_name": r.olt_name, "count": 0, "pons": []}
+        tree[key]["pons"].append({"id": r.pon_id, "name": r.pon_id, "count": r.cnt})
+        tree[key]["count"] += r.cnt
+
+    items = [UIOltGroup(**v) for v in tree.values()]
+    return UIUnlocatedGroups(items=items)
+
