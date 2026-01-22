@@ -5,12 +5,40 @@ defaults:
 
 olts:
 
+
+  - id: huawei-TEST
+    vendor: huawei
+    host: 192.168.88.25
+    port: 23
+    username: root
+    password: admin
+    prompt: "MA5603T"
+    snmp_ip: 192.168.88.25
+    snmp_port: 161
+    snmp_community: public
+    description: "Huawei – Laboratorio"
+    poll_interval: 90
+    pon_list:
+      - frame: "0"
+        slot: 0
+        port: 0
+
+  - id: zyxel1408-TEST
+    vendor: zyxel1408A
+    host: 192.168.88.25
+    port: 23
+    username: admin
+    password: 1234
+    prompt: "OLT1408A#"
+    description: "Zyxel – TEST"
+    poll_interval: 20
+
   - id: zyxel1240XA-TEST
     vendor: zyxel1240XA
-    host: 201.251.78.101
-    port: 18104
+    host: 192.168.88.25
+    port: 23
     username: admin
-    password: 0ltc3pr44
+    password: 1234
     prompt: "MSC1240XA#"
     poll_interval: 300
     description: "Zyxel 1240XA – TEST"
@@ -20,10 +48,10 @@ olts:
 
   - id: zyxel2406-TEST
     vendor: zyxel2406
-    host: 201.251.78.101
-    port: 18103
+    host: 192.168.88.25
+    port: 23
     username: admin
-    password: f2%C4+f1$d7(
+    password: 1234
     prompt: "OLT2406#"
     description: "Zyxel 2406– TEST"
     poll_interval: 300
@@ -31,4 +59,3 @@ olts:
     min_onts: 600
     retry_once: true
     timeout: 120
-

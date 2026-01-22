@@ -115,62 +115,70 @@ NGINX_FILE_PATH=./nginx.conf
 Define tus equipos OLT en formato YAML. Ejemplo:
 
 ```yaml
-# config/olts.yaml   (ejemplo completo)
-defaults:
-  poll_interval: 300            # 5 min
-  prompt: ">"                   # valor genérico; cada OLT puede sobre-escribirlo
-
-olts:
-  - id: zyxel-TEST
-    vendor: zyxel1408A
-    host: 152.170.74.208
-    port: 2300
-    username: admin
-    password: 1234
-    prompt: "OLT1408A#"
-    description: "Zyxel – TEST"
-    poll_interval: 20
-
-  - id: huawei-TEST
-    vendor: huawei
-    host: 192.168.88.25
-    port: 23
-    username: root
-    password: admin
-    prompt: "MA5603T"
-    snmp_ip: 192.168.88.25
-    snmp_port: 161
-    snmp_community: public
-    description: "Huawei – Laboratorio"
-    poll_interval: 90
-    pon_list:
-      - frame: "0"
-        slot: 0
-        port: 0
+# config/olts.yaml   (ejemplo completo)  
+defaults:  
+  poll_interval: 300            # 5 min  
+  prompt: ">"                   # valor genérico; cada OLT puede sobre-escribirlo  
+  
+olts:  
+  
+  
+  - id: huawei-TEST  
+    vendor: huawei  
+    host: 192.168.88.25  
+    port: 23  
+    username: root  
+    password: admin  
+    prompt: "MA5603T"  
+    snmp_ip: 192.168.88.25  
+    snmp_port: 161  
+    snmp_community: public  
+    description: "Huawei – Laboratorio"  
+    poll_interval: 90  
+    pon_list:  
+      - frame: "0"  
+        slot: 0  
+        port: 0  
       - frame: "0"
         slot: 0
         port: 1
-
-  - id: zyxel1240XA-TEST
-    vendor: zyxel1240XA
-    host: 192.168.88.25
-    port: 23
-    username: admin
-    password: 1234
-    prompt: "MSC1240XA#"
-    poll_interval: 60
-    description: "Zyxel 1240XA – TEST"
-    slots: ["1", "2"]
-
-  - id: zyxel-TEST
-    vendor: zyxel2406
-    host: 192.168.88.25
-    port: 23
-    username: admin
-    password: 1234
-    prompt: "OLT1408A#"
-    description: "Zyxel 2406– TEST"
-    poll_interval: 60
+  
+  - id: zyxel1408-TEST  
+    vendor: zyxel1408A  
+    host: 192.168.88.25  
+    port: 23  
+    username: admin  
+    password: 1234  
+    prompt: "OLT1408A#"  
+    description: "Zyxel – TEST"  
+    poll_interval: 20  
+  
+  - id: zyxel1240XA-TEST  
+    vendor: zyxel1240XA  
+    host: 192.168.88.25  
+    port: 23  
+    username: admin  
+    password: 1234  
+    prompt: "MSC1240XA#"  
+    poll_interval: 300  
+    description: "Zyxel 1240XA – TEST"  
+    slots: ["1", "2", "4", "5", "6"]  
+    timeout: 120  
+  
+  
+  - id: zyxel2406-TEST  
+    vendor: zyxel2406  
+    host: 192.168.88.25  
+    port: 23  
+    username: admin  
+    password: 1234 
+    prompt: "OLT2406#"  
+    description: "Zyxel 2406– TEST"  
+    poll_interval: 300  
+    debug: false  
+    min_onts: 600  
+    retry_once: true  
+    timeout: 120
 ```
 
 El contenedor monta `collector/config` en `/config` y lee `/config/olts.yaml`.
