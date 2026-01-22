@@ -263,7 +263,19 @@ Repite para `redis_data` cambiando rutas.
 ## Version 
 
 - [22/01/26] v0.2.0
-  - 
+  - Integración de nuevas OLTs Zyxel 1240XA y 2406.
+  - Optimización del sistema por índices geométricos, cachés de puertos PON, vistas materializadas...
+  - Filtro de MAPA para no saturar vista y mejorar rendimientos. 
+  - Fitrado en MAPA por OLT y PON.
+  - Clasificación de ONTs sin ubicar por OLT y por PON. Árbol jerárquico.
+  - Buscador de ONTs ubicadas y sin ubicar con zoom automática.
+  - Exportación de ONTs a CSV.
+  - Importación de ONTs con CSV con asociación a CTO y ubicación por coordenadas 4326 vía CSV.
+  - Plugins de mapa para buscar en Nominatim, geolocalizador y centrador en ONTs.
+  - Buscador de CTOs.
+  - Mejora general de la interfaz. Look & Feel.
+  - Renderizado de Serial y Descripción de las ONTs.
+  - Mejora general del rendimiento de las APIs para aGIS.
 
 
 ## Autor
