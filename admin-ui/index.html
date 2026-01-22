@@ -9,12 +9,12 @@
   <!-- MarkerCluster CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css"/>
-<!-- Leaflet plugins CSS -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder@3.3.1/dist/Control.Geocoder.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.fullscreen@5.2.1/Control.FullScreen.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.locatecontrol@0.85.1/dist/L.Control.Locate.min.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet-easybutton@2.4.0/src/easy-button.css" />
 
+  <!-- Leaflet plugins CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder@3.3.1/dist/Control.Geocoder.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.fullscreen@5.2.1/Control.FullScreen.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.locatecontrol@0.85.1/dist/L.Control.Locate.min.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-easybutton@2.4.0/src/easy-button.css" />
 
   <!-- Tu CSS -->
   <link rel="stylesheet" href="css/style.css">
@@ -33,79 +33,80 @@
 
   <!-- Contenedor principal -->
   <div id="container">
-    <!-- Sidebar -->
+
+    <!-- Sidebar izquierdo -->
     <div id="sidebar">
-  <h3>Filtro mapa</h3>
+      <h3>Filtro mapa</h3>
 
-  <div class="filter-row">
-    <label for="map-olt-select">OLT</label>
-    <select id="map-olt-select">
-      <option value="">-- Selecciona OLT --</option>
-    </select>
-  </div>
+      <div class="filter-row">
+        <label for="map-olt-select">OLT</label>
+        <select id="map-olt-select">
+          <option value="">-- Selecciona OLT --</option>
+        </select>
+      </div>
 
-  <div class="filter-row">
-    <label for="map-pon-select">PON</label>
-    <select id="map-pon-select" disabled>
-      <option value="">-- Selecciona PON --</option>
-    </select>
-  </div>
+      <div class="filter-row">
+        <label for="map-pon-select">PON</label>
+        <select id="map-pon-select" disabled>
+          <option value="">-- Selecciona PON --</option>
+        </select>
+      </div>
 
-  <div class="help">
-    Selecciona una OLT y una PON para cargar ONTs ubicadas en el mapa.
-  </div>
+      <div class="help">
+        Selecciona una OLT y una PON para cargar ONTs ubicadas en el mapa.
+      </div>
 
+      <hr />
+      <h3>Buscar CTO</h3>
 
-         <hr />
-  <h3>Buscar ONT</h3>
+      <div class="filter-row">
+        <label for="cto-search-q">Nombre o UUID</label>
+        <input id="cto-search-q" type="text" placeholder="Ej: CTO-ALORA-12, 7f2b..., ..." />
+      </div>
 
-  <div class="filter-row">
-    <label for="ont-search-q">Texto</label>
-    <input id="ont-search-q" type="text" placeholder="Ej: ont-3-1-12, 3-1-12, SN..." />
-  </div>
+      <div id="cto-search-results" class="search-results"></div>
 
-  <div class="filter-row" style="display:flex;align-items:center;gap:8px;">
-    <input id="ont-search-only-unlocated" type="checkbox" checked />
-    <label for="ont-search-only-unlocated" style="margin:0;">Solo sin ubicar</label>
-  </div>
+      <div class="help">
+        Tip: escribe 2+ caracteres. Click para centrar y abrir el popup.
+      </div>
 
-  <div id="ont-search-results" class="search-results"></div>
+      <hr />
+      <h3>Buscar ONT</h3>
 
-  <div class="help">
-    Tip: escribe 2+ caracteres. Click en un resultado para ubicar o centrar en el mapa.
-  </div>
+      <div class="filter-row">
+        <label for="ont-search-q">Texto</label>
+        <input id="ont-search-q" type="text" placeholder="Ej: ont-3-1-12, 3-1-12, SN..." />
+      </div>
 
-  <hr />
+      <div class="filter-row ont-checkbox-row">
+        <input id="ont-search-only-unlocated" type="checkbox" checked />
+        <label for="ont-search-only-unlocated" style="margin:0;">Solo sin ubicar</label>
+      </div>
 
-  <div style="display:flex;align-items:center;justify-content:space-between;">
-    <h3 style="margin:0;">ONTs sin ubicar</h3>
-    <span id="unlocated-count" class="muted"></span>
-  </div>
+      <div id="ont-search-results" class="search-results"></div>
 
-  <div id="unlocated-tree"></div>
+      <div class="help">
+        Tip: escribe 2+ caracteres. Click en un resultado para ubicar o centrar en el mapa.
+      </div>
 
-         <hr />
-<h3>CSV ONTs</h3>
+      <hr />
+      <h3>CSV ONTs</h3>
 
-<button id="btn-onts-csv-download" class="btn" style="width:100%;">Descargar CSV de ONTs</button>
+      <button id="btn-onts-csv-download" class="btn" style="width:100%;">Descargar CSV de ONTs</button>
 
-<div class="filter-row" style="margin-top:10px;">
-  <label for="onts-csv-file">Importar CSV</label>
-  <input id="onts-csv-file" type="file" accept=".csv,text/csv" />
-</div>
+      <div class="filter-row" style="margin-top:10px;">
+        <label for="onts-csv-file">Importar CSV</label>
+        <input id="onts-csv-file" type="file" accept=".csv,text/csv" />
+      </div>
 
-<button id="btn-onts-csv-upload" class="btn" style="width:100%;">Importar y aplicar cambios</button>
+      <button id="btn-onts-csv-upload" class="btn" style="width:100%;">Importar y aplicar cambios</button>
 
-<div id="onts-csv-result" class="muted" style="margin-top:6px;"></div>
-
-
-
-</div>
-
+      <div id="onts-csv-result" class="muted" style="margin-top:6px;"></div>
+    </div>
 
     <!-- Mapa wrapper -->
-    <main id="map-wrapper" style="flex:1;position:relative;">
-      <div id="map" style="height:100%;"></div>
+    <main id="map-wrapper">
+      <div id="map"></div>
 
       <!-- Loading overlay -->
       <div id="loading-overlay" class="loading hidden">
@@ -114,11 +115,31 @@
       </div>
 
       <!-- Status bar -->
-      <div id="status-bar"
-           style="position:absolute;top:10px;right:10px;z-index:1200;background:rgba(255,255,255,0.9);padding:8px 10px;border-radius:6px;border:1px solid #ddd;font-size:0.9rem;color:#333;">
+      <div id="status-bar">
         <span id="status-text">Sin filtro</span>
       </div>
     </main>
+
+    <!-- Sidebar derecho: ONTs sin ubicar -->
+    <aside id="sidebar-right" aria-label="Panel ONTs sin ubicar">
+      <div class="side-header">
+        <div class="side-title">
+          <h3 style="margin:0;">ONTs sin ubicar</h3>
+          <span id="unlocated-count" class="muted"></span>
+        </div>
+
+        <button id="btn-unlocated-toggle"
+                class="icon-btn"
+                type="button"
+                aria-label="Colapsar panel ONTs sin ubicar"
+                title="Colapsar/expandir">
+          <span class="chev" aria-hidden="true">⟨</span>
+        </button>
+      </div>
+
+      <div id="unlocated-tree"></div>
+    </aside>
+
   </div>
 
   <!-- Logo en la esquina inferior izquierda del mapa -->
@@ -128,12 +149,11 @@
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
 
-  <!-- App -->
   <!-- Leaflet plugins JS -->
-<script src="https://unpkg.com/leaflet-control-geocoder@3.3.1/dist/Control.Geocoder.js"></script>
-<script src="https://unpkg.com/leaflet.fullscreen@5.2.1/Control.FullScreen.js"></script>
-<script src="https://unpkg.com/leaflet.locatecontrol@0.85.1/dist/L.Control.Locate.min.js"></script>
-<script src="https://unpkg.com/leaflet-easybutton@2.4.0/src/easy-button.js"></script>
+  <script src="https://unpkg.com/leaflet-control-geocoder@3.3.1/dist/Control.Geocoder.js"></script>
+  <script src="https://unpkg.com/leaflet.fullscreen@5.2.1/Control.FullScreen.js"></script>
+  <script src="https://unpkg.com/leaflet.locatecontrol@0.85.1/dist/L.Control.Locate.min.js"></script>
+  <script src="https://unpkg.com/leaflet-easybutton@2.4.0/src/easy-button.js"></script>
 
   <script type="module" src="js/app.js"></script>
 </body>

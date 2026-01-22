@@ -26,13 +26,20 @@ const ontSearchQEl = document.getElementById('ont-search-q');
 const ontSearchOnlyUnlocatedEl = document.getElementById('ont-search-only-unlocated');
 const ontSearchResultsEl = document.getElementById('ont-search-results');
 
+
 const btnOntsCsvDownloadEl = document.getElementById('btn-onts-csv-download');
 const ontsCsvFileEl = document.getElementById('onts-csv-file');
 const btnOntsCsvUploadEl = document.getElementById('btn-onts-csv-upload');
 const ontsCsvResultEl = document.getElementById('onts-csv-result');
 
+const ctoSearchQEl = document.getElementById('cto-search-q');
+const ctoSearchResultsEl = document.getElementById('cto-search-results');
+
 
 let ontMarkerById = new Map(); // ontId -> Leaflet marker
+let ctoDict = {};
+let ctoMarkerByUuid = new Map(); // uuid -> Leaflet marker
+let _ctoSearchHighlight = null;  // círculo temporal
 
 
 // ───────────────── UI helpers ─────────────────
@@ -138,6 +145,60 @@ function renderSearchResults(items) {
   }
 }
 
+
+
+function highlightCto(latlng) {
+  if (_ctoSearchHighlight) {
+    try { map.removeLayer(_ctoSearchHighlight); } catch (e) {}
+    _ctoSearchHighlight = null;
+  }
+  _ctoSearchHighlight = L.circle(latlng, { radius: 25, weight: 2, fillOpacity: 0.08 });
+  _ctoSearchHighlight.addTo(map);
+  setTimeout(() => {
+    if (_ctoSearchHighlight) {
+      try { map.removeLayer(_ctoSearchHighlight); } catch (e) {}
+      _ctoSearchHighlight = null;
+    }
+  }, 1800);
+}
+
+function renderCtoSearchResults(items) {
+  if (!ctoSearchResultsEl) return;
+  ctoSearchResultsEl.innerHTML = '';
+
+  if (!items.length) {
+    ctoSearchResultsEl.innerHTML = `<div class="muted" style="padding:6px 0;">Sin resultados</div>`;
+    return;
+  }
+
+  for (const c of items) {
+    const div = document.createElement('div');
+    // Reutiliza estilo existente (mismo look&feel que ONTs)
+    div.className = 'ont-item';
+
+    div.innerHTML = `
+      ${escapeHtml(c.nombre || '')}
+      <div class="tree-meta" style="margin-top:2px;">
+        UUID ${escapeHtml(c.uuid)}
+      </div>
+    `;
+
+    div.addEventListener('click', () => {
+      const mk = ctoMarkerByUuid.get(c.uuid);
+      const ll = c.latlng || (mk ? mk.getLatLng() : null);
+      if (!ll) return;
+
+      map.setView(ll, Math.max(map.getZoom(), 18));
+      if (mk && mk.openPopup) mk.openPopup();
+
+      highlightCto(ll);
+    });
+
+    ctoSearchResultsEl.appendChild(div);
+  }
+}
+
+
 async function initOntSearch() {
   if (!ontSearchQEl || !ontSearchResultsEl || !ontSearchOnlyUnlocatedEl) return;
 
@@ -170,6 +231,45 @@ async function initOntSearch() {
 
   ontSearchQEl.addEventListener('input', run);
   ontSearchOnlyUnlocatedEl.addEventListener('change', run);
+}
+
+
+function scoreCtoMatch(q, uuid, nombre) {
+  const ql = q.toLowerCase();
+  const u = String(uuid || '').toLowerCase();
+  const n = String(nombre || '').toLowerCase();
+
+  if (u === ql) return 0;           // match exacto UUID
+  if (u.startsWith(ql)) return 1;   // prefijo UUID
+  if (u.includes(ql)) return 2;     // contiene UUID
+  if (n.startsWith(ql)) return 3;   // prefijo nombre
+  if (n.includes(ql)) return 4;     // contiene nombre
+  return 999;
+}
+
+async function initCtoSearch() {
+  if (!ctoSearchQEl || !ctoSearchResultsEl) return;
+
+  const run = debounce(() => {
+    const q = (ctoSearchQEl.value || '').trim();
+    if (q.length < 2) {
+      ctoSearchResultsEl.innerHTML = '';
+      return;
+    }
+
+    // buscamos SOLO sobre lo ya renderizado / indexado en ctoDict
+    const out = [];
+    for (const [uuid, obj] of Object.entries(ctoDict || {})) {
+      const nombre = obj?.nombre || '';
+      const sc = scoreCtoMatch(q, uuid, nombre);
+      if (sc < 999) out.push({ uuid, nombre, latlng: obj?.latlng, _sc: sc });
+    }
+
+    out.sort((a, b) => (a._sc - b._sc) || String(a.nombre).localeCompare(String(b.nombre)));
+    renderCtoSearchResults(out.slice(0, 80));
+  }, 200);
+
+  ctoSearchQEl.addEventListener('input', run);
 }
 
 
@@ -217,7 +317,6 @@ const PAGE_SIZE = 200;
 let selectedOntId = null;
 let mode = null; // 'locate' o 'assign'
 
-let ctoDict = {};
 
 let mapOltId = null;
 let mapOltName = null;
@@ -270,18 +369,26 @@ function resetSelection() {
 async function loadCtos() {
   ctoLayer.clearLayers();
   ctoDict = {};
+  ctoMarkerByUuid = new Map();
 
   const geo = await getCTOGeoJSON();
   L.geoJSON(geo, {
     pointToLayer: (f, latlng) => L.marker(latlng, { icon: ctoIcon }),
     onEachFeature: (f, layer) => {
       const { nombre, uuid } = f.properties;
+
+      // index para búsqueda
       ctoDict[uuid] = { nombre, latlng: layer.getLatLng() };
-      layer.bindPopup(`<b>CTO:</b> ${escapeHtml(nombre)}`);
+      ctoMarkerByUuid.set(uuid, layer);
+
+      layer.bindPopup(
+        `<b>CTO:</b> ${escapeHtml(nombre)} <br> <b>UUID</b>: ${escapeHtml(uuid)}`
+      );
       layer.on('click', () => handleCtoClick(uuid));
     }
   }).addTo(ctoLayer);
 }
+
 
 async function handleCtoClick(uuid) {
   if (!selectedOntId || mode !== 'assign') return;
@@ -732,6 +839,11 @@ async function initCsvControls() {
   try {
     await loadCtos();
     fitToCTOs();
+
+    // Buscador CTOs (frontend-only sobre ctoDict/ctoLayer)
+    await initCtoSearch();
+
+
     await initMapFilters();
 
     // Buscador ONTs
@@ -894,3 +1006,36 @@ if (L.easyButton) {
 // Llamar una sola vez tras inicializar el mapa/capas
 addLeafletPlugins();
 
+
+
+// ───────────────── Sidebar derecho: collapse/expand ─────────────────
+function initRightSidebarCollapse() {
+  const right = document.getElementById('sidebar-right');
+  const btn = document.getElementById('btn-unlocated-toggle');
+  if (!right || !btn) return;
+
+  const KEY = 'ui.sidebarRight.collapsed';
+
+  const apply = (collapsed) => {
+    right.classList.toggle('collapsed', collapsed);
+    btn.setAttribute('aria-label', collapsed ? 'Expandir panel ONTs sin ubicar' : 'Colapsar panel ONTs sin ubicar');
+    btn.setAttribute('title', collapsed ? 'Expandir' : 'Colapsar');
+  };
+
+  // Estado inicial desde localStorage
+  const saved = localStorage.getItem(KEY);
+  if (saved === '1') apply(true);
+
+  btn.addEventListener('click', () => {
+    const collapsed = !right.classList.contains('collapsed');
+    apply(collapsed);
+    localStorage.setItem(KEY, collapsed ? '1' : '0');
+  });
+}
+
+// Ejecuta cuando el DOM está listo (en módulos suele estarlo, pero lo hacemos seguro)
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initRightSidebarCollapse);
+} else {
+  initRightSidebarCollapse();
+}

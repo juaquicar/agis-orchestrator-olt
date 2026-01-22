@@ -2,19 +2,26 @@
 :root {
   --brand-blue: #1a3a6a;
   --brand-orange: #dc6725;
+
+  --sidebar-left-w: 320px;
+  --sidebar-right-w: 360px;
+  --sidebar-right-collapsed-w: 54px;
+
+  --panel-bg: #ffffff;
+  --panel-border: #e6e9ef;
+  --text: #101828;
+  --text-muted: #667085;
+
+  --control-bg: #ffffff;
+  --control-border: #d6dbe3;
+  --control-radius: 12px;
 }
 
 /* Reset & Box sizing */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 /* Layout general */
-html, body {
-  height: 100%;
-}
+html, body { height: 100%; }
 body {
   display: flex;
   flex-direction: column;
@@ -22,9 +29,7 @@ body {
 }
 
 hr {
-    margin-top: 5px;
-    margin-bottom: 15px;
-    height: 3px;
+border: 0;
 }
 
 /* Navbar personalizado */
@@ -40,25 +45,11 @@ hr {
   justify-content: space-between;
   padding: 10px 20px;
 }
-.brand {
-  font-size: 1.2rem;
-  font-weight: bold;
-}
-.nav-links {
-  list-style: none;
-  display: flex;
-}
-.nav-links li + li {
-  margin-left: 20px;
-}
-.nav-links a {
-  color: #fff;
-  text-decoration: none;
-  font-size: 1rem;
-}
-.nav-links a:hover {
-  text-decoration: underline;
-}
+.brand { font-size: 1.2rem; font-weight: bold; }
+.nav-links { list-style: none; display: flex; }
+.nav-links li + li { margin-left: 20px; }
+.nav-links a { color: #fff; text-decoration: none; font-size: 1rem; }
+.nav-links a:hover { text-decoration: underline; }
 
 /* Contenedor principal */
 #container {
@@ -67,112 +58,142 @@ hr {
   height: calc(100vh - 52px); /* 52px = altura aproximada del header */
 }
 
-/* Sidebar */
-#sidebar {
-  width: 250px;
-  background: #f8f9fa;
-  border-right: 1px solid #ddd;
-  padding: 15px;
+/* ───────────────── Sidebar izquierdo ───────────────── */
+
+#sidebar{
+  width: var(--sidebar-left-w);
+  flex: 0 0 var(--sidebar-left-w);
+  background: linear-gradient(180deg, #fbfcfe 0%, #f6f8fb 100%);
+  border-right: 1px solid var(--panel-border);
+  padding: 14px;
   overflow-y: auto;
 }
-#sidebar h3 {
+
+/* Scrollbar (suave) */
+#sidebar::-webkit-scrollbar{ width: 10px; }
+#sidebar::-webkit-scrollbar-thumb{
+  background: rgba(16,24,40,.18);
+  border-radius: 999px;
+  border: 3px solid rgba(0,0,0,0);
+  background-clip: padding-box;
+}
+#sidebar::-webkit-scrollbar-track{ background: transparent; }
+
+/* Títulos */
+#sidebar h3{
   color: var(--brand-blue);
-  margin-bottom: 10px;
-}
-#unlocated-list {
-  list-style: none;
-}
-#unlocated-list li {
-  padding: 8px;
-  border-bottom: 1px solid #eee;
-  cursor: pointer;
-}
-#unlocated-list li:hover,
-#unlocated-list li.selected {
-  background-color: var(--brand-blue);
-  color: #fff;
+  font-size: 0.98rem;
+  letter-spacing: .2px;
+  margin: 10px 0 8px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(26,58,106,.10) 0%, rgba(26,58,106,.04) 100%);
+  border: 1px solid rgba(26,58,106,.12);
 }
 
-/* Mapa */
-#map {
-  flex: 1;
-  position: relative;
+/* Separadores */
+#sidebar hr{
+  height: 3px;
+  margin: 15px;
+  margin-bottom: 20px;
+  background: rgba(230,233,239,1);
 }
 
-/* Logo sobre el mapa */
-.map-logo {
-  position: absolute;
-  bottom: 10px;
-  left: 270px;
-  width: 120px;
-  z-index: 1000;
-  pointer-events: none;
+/* Filas */
+.filter-row{ margin: 10px 0; }
+.filter-row label{
+  display:block;
+  font-size: .86rem;
+  color: var(--text-muted);
+  margin: 0 0 6px;
 }
 
-
-#unlocated-tree details { margin: 8px 0; }
-#unlocated-tree summary { cursor: pointer; user-select: none; }
-.tree-olt > summary { font-weight: 700; }
-.tree-pon > summary { font-weight: 600; padding-left: 10px; }
-
-.ont-item {
-  padding: 6px 10px;
-  margin-left: 22px;
-  border-bottom: 1px solid #eee;
-  cursor: pointer;
+/* Checkbox row (sin inline “feo”) */
+.ont-checkbox-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
 }
-.ont-item:hover { background: #f6f8fb; }
-.ont-item.selected { background: #e8f0ff; }
-
-.tree-meta {
-  color:#666;
-  font-weight: 500;
-  font-size: 0.85rem;
-  margin-left: 6px;
-}
-
-.load-more {
-  margin: 6px 0 6px 22px;
-  padding: 6px 10px;
-}
-
-
-/* ───────────────── Buscador ONTs (sidebar) ───────────────── */
-
-#ont-search-q {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #d6dbe3;
-  border-radius: 10px;
-  background: #fff;
-  outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-#ont-search-q:focus {
-  border-color: rgba(26, 58, 106, 0.55);
-  box-shadow: 0 0 0 3px rgba(26, 58, 106, 0.12);
-}
-
-#ont-search-only-unlocated {
+#sidebar input[type="checkbox"]{
   width: 16px;
   height: 16px;
   accent-color: var(--brand-blue);
 }
 
-#ont-search-results {
+/* Inputs/select homogéneos */
+#sidebar input[type="text"],
+#sidebar select,
+#sidebar input[type="file"]{
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--control-radius);
+  background: var(--control-bg);
+  outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .05s ease;
+  color: var(--text);
+}
+#sidebar input[type="text"]:focus,
+#sidebar select:focus,
+#sidebar input[type="file"]:focus{
+  border-color: rgba(26, 58, 106, 0.55);
+  box-shadow: 0 0 0 3px rgba(26, 58, 106, 0.12);
+}
+
+/* Help / muted */
+.help{
+  margin-top: 8px;
+  padding: 10px 12px;
+  color: var(--text-muted);
+  font-size: .86rem;
+  line-height: 1.25rem;
+  background: rgba(255,255,255,.75);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+}
+.muted{
+  color: var(--text-muted);
+  font-size: .86rem;
+}
+
+/* Botones */
+.btn, #btn-onts-csv-download, #btn-onts-csv-upload{
+  appearance: none;
+  border: 1px solid rgba(26,58,106,.25);
+  background: linear-gradient(180deg, #ffffff 0%, #f2f6ff 100%);
+  color: var(--brand-blue);
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .05s ease, box-shadow .15s ease, border-color .15s ease;
+  box-shadow: 0 6px 16px rgba(16,24,40,.06);
+}
+.btn:hover, #btn-onts-csv-download:hover, #btn-onts-csv-upload:hover{
+  border-color: rgba(26,58,106,.45);
+  box-shadow: 0 10px 22px rgba(16,24,40,.10);
+}
+.btn:active, #btn-onts-csv-download:active, #btn-onts-csv-upload:active{
+  transform: translateY(1px);
+}
+
+/* Search results */
+.search-results,
+#ont-search-results,
+#cto-search-results{
   margin-top: 10px;
-  background: #ffffff;
-  border: 1px solid #e6e9ef;
-  border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+  background: rgba(255,255,255,.9);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  box-shadow: 0 8px 20px rgba(16,24,40,.06);
   overflow: hidden;
   max-height: 280px;
   overflow-y: auto;
 }
 
-/* Cabecera/estado (opcional) */
-#ont-search-results .search-state {
+/* ───────────── Estilos específicos buscador ONTs (manteniendo lo tuyo) ───────────── */
+
+#ont-search-results .search-state{
   padding: 10px 12px;
   font-size: 0.92rem;
   color: #667085;
@@ -180,38 +201,30 @@ hr {
   background: #fafbfc;
 }
 
-/* Ítems de búsqueda (reutiliza ont-item pero estilizado en contexto resultados) */
-#ont-search-results .ont-item {
-  margin-left: 0;            /* anula el indent del árbol */
+#ont-search-results .ont-item{
+  margin-left: 0;
   padding: 10px 12px;
   border-bottom: 1px solid #f0f2f6;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
-
-#ont-search-results .ont-item:hover {
-  background: #f7f9fd;
-}
-
-#ont-search-results .ont-item.selected {
+#ont-search-results .ont-item:hover{ background: #f7f9fd; }
+#ont-search-results .ont-item.selected{
   background: #e8f0ff;
   box-shadow: inset 3px 0 0 var(--brand-blue);
 }
-
-#ont-search-results .ont-title-row {
+#ont-search-results .ont-title-row{
   display: flex;
   align-items: center;
   gap: 8px;
   line-height: 1.15;
 }
-
-#ont-search-results .ont-id {
+#ont-search-results .ont-id{
   font-weight: 700;
   color: #101828;
 }
-
-.badge {
+.badge{
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
@@ -220,25 +233,191 @@ hr {
   font-weight: 700;
   border: 1px solid transparent;
 }
-
-.badge.located {
+.badge.located{
   background: #ecfdf3;
   color: #027a48;
   border-color: #abefc6;
 }
-
-.badge.unlocated {
+.badge.unlocated{
   background: #fff7ed;
   color: #b54708;
   border-color: #fed7aa;
 }
-
-#ont-search-results .ont-meta {
+#ont-search-results .ont-meta{
   font-size: 0.86rem;
   color: #667085;
 }
-
-#ont-search-results .ont-meta strong {
+#ont-search-results .ont-meta strong{
   color: #344054;
   font-weight: 700;
+}
+
+/* ───────────────── Mapa wrapper ───────────────── */
+
+#map-wrapper{
+  flex: 1 1 auto;
+  min-width: 0;
+  position: relative;
+}
+
+#map{
+  height: 100%;
+}
+
+/* Status bar (antes inline) */
+#status-bar{
+  position:absolute;
+  top:10px;
+  right:10px;
+  z-index:1200;
+  background:rgba(255,255,255,0.9);
+  padding:8px 10px;
+  border-radius:10px;
+  border:1px solid #ddd;
+  font-size:0.9rem;
+  color:#333;
+}
+
+/* Logo sobre el mapa */
+.map-logo{
+  position: absolute;
+  bottom: 10px;
+  left: calc(var(--sidebar-left-w) + 20px);
+  width: 120px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+/* ───────────────── Sidebar derecho (ONTs sin ubicar) ───────────────── */
+
+#sidebar-right{
+  width: var(--sidebar-right-w);
+  flex: 0 0 var(--sidebar-right-w);
+  overflow-y: auto;
+  border-left: 1px solid var(--panel-border);
+  background: linear-gradient(180deg, #fbfcfe 0%, #f6f8fb 100%);
+  padding: 14px;
+  transition: width .18s ease, flex-basis .18s ease;
+}
+
+/* Cabecera del panel derecho */
+#sidebar-right .side-header{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+#sidebar-right .side-title{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  min-width: 0;
+}
+
+#sidebar-right h3{
+  color: var(--brand-blue);
+  font-size: 0.98rem;
+  letter-spacing: .2px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(26,58,106,.10) 0%, rgba(26,58,106,.04) 100%);
+  border: 1px solid rgba(26,58,106,.12);
+  white-space: nowrap;
+}
+
+/* Botón icono */
+.icon-btn{
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(26,58,106,.18);
+  background: rgba(255,255,255,.92);
+  cursor: pointer;
+  display: inline-flex;
+  align-items:center;
+  justify-content:center;
+  transition: box-shadow .15s ease, transform .05s ease, border-color .15s ease;
+  box-shadow: 0 6px 16px rgba(16,24,40,.06);
+}
+.icon-btn:hover{
+  border-color: rgba(26,58,106,.35);
+  box-shadow: 0 10px 22px rgba(16,24,40,.10);
+}
+.icon-btn:active{ transform: translateY(1px); }
+
+.icon-btn .chev{
+  font-size: 18px;
+  line-height: 1;
+  color: var(--brand-blue);
+  display:block;
+  transform: translateX(1px);
+}
+
+/* Árbol derecha (reutiliza estilos existentes) */
+#unlocated-tree details { margin: 8px 0; }
+#unlocated-tree summary { cursor: pointer; user-select: none; }
+.tree-olt > summary { font-weight: 700; }
+.tree-pon > summary { font-weight: 600; padding-left: 10px; }
+
+.ont-item {
+  padding: 6px 10px;
+  border-bottom: 1px solid #eef1f6;
+  cursor: pointer;
+}
+.ont-item:hover { background: #f6f8fb; }
+.ont-item.selected { background: #e8f0ff; box-shadow: inset 3px 0 0 var(--brand-blue); }
+
+.tree-meta{
+  color:#666;
+  font-weight: 500;
+  font-size: 0.85rem;
+  margin-left: 6px;
+}
+
+.load-more{
+  margin: 6px 0 6px 22px;
+  padding: 6px 10px;
+}
+
+/* ───────────── Collapse panel derecho ───────────── */
+
+#sidebar-right.collapsed{
+  width: var(--sidebar-right-collapsed-w);
+  flex-basis: var(--sidebar-right-collapsed-w);
+  padding: 12px 8px;
+}
+
+/* En colapso: ocultamos título, contador y árbol, pero dejamos el botón visible */
+#sidebar-right.collapsed .side-title,
+#sidebar-right.collapsed #unlocated-tree{
+  opacity: 0;
+  pointer-events: none;
+  height: 0;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+#sidebar-right.collapsed .side-header{
+  justify-content: center;
+}
+
+/* Rotación “chevron” al colapsar */
+#sidebar-right.collapsed .icon-btn .chev{
+  transform: rotate(180deg);
+}
+
+/* Responsive: en pantallas pequeñas, ocultamos panel derecho */
+@media (max-width: 1100px){
+  #sidebar-right{ display:none; }
+}
+
+/* Sidebar más estrecho si hace falta */
+@media (max-width: 920px){
+  :root{ --sidebar-left-w: 280px; }
+}
+@media (max-width: 720px){
+  :root{ --sidebar-left-w: 260px; }
 }
