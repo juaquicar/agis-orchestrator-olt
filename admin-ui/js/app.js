@@ -105,13 +105,27 @@ function renderSearchResults(items) {
       ? `<span class="tree-meta">[ubicada]</span>`
       : `<span class="tree-meta">[sin ubicar]</span>`;
 
+    const serialTxt = (o.serial != null && String(o.serial).trim() !== '')
+      ? escapeHtml(o.serial)
+      : '<span class="muted">—</span>';
+
+    const descTxt = (o.description != null && String(o.description).trim() !== '')
+      ? escapeHtml(o.description)
+      : '<span class="muted">—</span>';
+
     div.innerHTML = `
       ${escapeHtml(o.vendor_ont_id)}
       ${badge}
       <div class="tree-meta" style="margin-top:2px;">
         OLT ${escapeHtml(o.olt_name)} · PON ${escapeHtml(o.pon_id)}
       </div>
+      <div class="tree-meta" style="margin-top:2px;">
+        <span><b>SN</b> ${serialTxt}</span>
+        &nbsp;·&nbsp;
+        <span><b>Desc</b> ${descTxt}</span>
+      </div>
     `;
+
 
     div.addEventListener('click', async () => {
       resetSelection();
@@ -572,6 +586,8 @@ async function reloadMapOnly() {
       let html = `<b>OLT:</b> ${escapeHtml(oltName)} <span style="color:#666">[${escapeHtml(p.olt_id)}]</span><br/>`;
       html += `<b>PON:</b> ${escapeHtml(ponName)}<br/>`;
       html += `<b>ONT:</b> ${escapeHtml(p.vendor_ont_id ?? '')}<br/>`;
+        html += `<b>Serial:</b> ${escapeHtml(p.serial ?? '')}<br/>`;
+        html += `<b>Descripción:</b> ${escapeHtml(p.description ?? '')}<br/>`;
 
       const cto_uuid = p.cto_uuid ?? null;
       if (cto_uuid && ctoDict[cto_uuid]) {
@@ -677,7 +693,22 @@ async function loadPonUnlocatedPage(oltId, oltName, ponId, ponName, container, r
     for (const o of items) {
       const div = document.createElement('div');
       div.className = 'ont-item';
-      div.innerHTML = `${escapeHtml(o.vendor_ont_id)} <span class="tree-meta">[${escapeHtml(oltId)}]</span>`;
+        const serialTxt = (o.serial != null && String(o.serial).trim() !== '')
+          ? escapeHtml(o.serial)
+          : '<span class="muted">—</span>';
+
+        const descTxt = (o.description != null && String(o.description).trim() !== '')
+          ? escapeHtml(o.description)
+          : '<span class="muted">—</span>';
+
+        div.innerHTML = `
+          ${escapeHtml(o.vendor_ont_id)} <span class="tree-meta">[${escapeHtml(oltId)}]</span>
+          <div class="tree-meta" style="margin-top:2px;">
+            <span><b>SN</b> ${serialTxt}</span>
+            &nbsp;·&nbsp;
+            <span><b>Desc</b> ${descTxt}</span>
+          </div>
+        `;
 
       div.addEventListener('click', async () => {
         resetSelection();

@@ -260,6 +260,12 @@ Repite para `redis_data` cambiando rutas.
 ---
 
 
+## Version 
+
+- [22/01/26] v0.2.0
+  - 
+
+
 ## Autor
 
 Juanma Quijada – juanma.quijada@stratosgs.com
