@@ -17,7 +17,7 @@ if not all([AGIS_HOST, AGIS_USER, AGIS_PASS, AGIS_SERVICE]):
 async def _get_agis_token() -> str:
     auth_url = f"{AGIS_HOST}/token-auth/login/"
     payload = {"username": AGIS_USER, "password": AGIS_PASS}
-    print(f"[DEBUG] solicitando token a {auth_url} con payload {payload}")
+    print(f"[DEBUG] solicitando token a {auth_url}")
     async with httpx.AsyncClient() as client:
         resp = await client.post(auth_url, data=payload)
         print(f"[DEBUG] respuesta token status={resp.status_code}, body={resp.text}")
