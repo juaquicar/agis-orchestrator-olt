@@ -89,7 +89,8 @@ JWT_SECRET=supersecret
 # ────────────────────────────
 # OLTs
 # ────────────────────────────
-OLT_CONFIG_PATH = '/config/olts.yaml'
+OLT_CONFIG_PATH='/config/olts.yaml'
+DELETE_ONTS=true
 
 
 # ────────────────────────────
