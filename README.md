@@ -96,10 +96,10 @@ DELETE_ONTS=true
 # ────────────────────────────
 # aGIS CTOs
 # ────────────────────────────
-aGIS_HOST=https://agis-eu.stratosgs.com
-aGIS_USER=USER
-aGIS_PASS=PASS
-aGIS_SERVICE=UUID_SERVICE
+AGIS_HOST=https://agis-eu.stratosgs.com
+AGIS_KEY_ID=agis_key_id_generado
+AGIS_SECRET=agis_secret_generado
+AGIS_SERVICE=UUID_SERVICE
 
 
 # ────────────────────────────
@@ -270,6 +270,11 @@ Repite para `redis_data` cambiando rutas.
 
 
 ## Version 
+
+- [19/03/26] v0.2.1
+  - Estados OOS-NR, OOS-NP, OOS-SB, O7 para Zyxel ahora son son tipo OFF por petición de Zyxel.
+  - Borrado de ONT de la base de datos si en la OLT no se encuentra. (Pendiente operativa en Huawei).
+  - Nueva autenticación HMAC segura API Client + API Secret con aGIS. 
 
 - [22/01/26] v0.2.0
   - Integración de nuevas OLTs Zyxel 1240XA y 2406.
