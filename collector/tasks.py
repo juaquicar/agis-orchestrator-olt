@@ -48,6 +48,16 @@ BROKER_URL  = os.getenv("REDIS_URL", "redis://redis:6379/0")
 DB_DSN      = os.getenv("DB_DSN", "postgresql://postgres:changeme@db:5432/olt")
 CONFIG_PATH = os.getenv("OLT_CONFIG_PATH", "/config/olts.yaml")
 
+
+def env_bool(name: str, default: bool = True) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+
+
+DELETE_MISSING_ONTS = env_bool("DELETE_ONTS", default=True)
+
 app    = Celery("collector", broker=BROKER_URL)
 engine = create_engine(DB_DSN, future=True, pool_pre_ping=True)
 
@@ -358,9 +368,8 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
             seen[r["vendor_ont_id"]] = r
 
         ### CONTRIBUTOR MATIAS -> eliminar ONTs que ya no existen en la OLT de tipo Zyxel #################
-        ### TODO: Conviene parametrización desde variable de .env DELETE_ONTS y testeo para Huawei.
         current_vids = list(seen.keys())
-        if vendor in ["zyxel1240XA", "zyxel2406", "zyxel1408A"]:
+        if DELETE_MISSING_ONTS and vendor in ["zyxel1240XA", "zyxel2406", "zyxel1408A"]:
             result = conn.execute(
                 text("""
                     DELETE FROM ont
@@ -376,6 +385,12 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
             deleted = result.rowcount or 0
             if deleted:
                 logging.info("OLT %s → %d ONTs eliminadas de la base", cfg["id"], deleted)
+        elif vendor in ["zyxel1240XA", "zyxel2406", "zyxel1408A"]:
+            logging.info(
+                "OLT %s → borrado de ONTs faltantes omitido por DELETE_ONTS=%s",
+                cfg["id"],
+                DELETE_MISSING_ONTS,
+            )
         ################################################################################################
         # b) Upsert ONTs
         for vid, r in seen.items():
