@@ -359,9 +359,8 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
 
         ### CONTRIBUTOR MATIAS -> eliminar ONTs que ya no existen en la OLT de tipo Zyxel #################
         ### TODO: Conviene parametrización desde variable de .env DELETE_ONTS y testeo para Huawei.
+        current_vids = list(seen.keys())
         if vendor in ["zyxel1240XA", "zyxel2406", "zyxel1408A"]:
-            current_vids = list(seen.keys())
-
             result = conn.execute(
                 text("""
                     DELETE FROM ont
