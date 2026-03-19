@@ -357,6 +357,26 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
         for r in rows:
             seen[r["vendor_ont_id"]] = r
 
+        ### CONTRIBUTOR MATIAS -> eliminar ONTs que ya no existen en la OLT de tipo Zyxel #################
+        if vendor in ["zyxel1240XA", "zyxel2406", "zyxel1408A"]:
+            current_vids = list(seen.keys())
+
+            result = conn.execute(
+                text("""
+                    DELETE FROM ont
+                    WHERE olt_id = :olt_id
+                    AND vendor_ont_id NOT IN :vids
+                """),
+                {
+                    "olt_id": cfg["id"],
+                    "vids": tuple(current_vids) if current_vids else ("__none__",),
+                },
+            )
+
+            deleted = result.rowcount or 0
+            if deleted:
+                logging.info("OLT %s → %d ONTs eliminadas de la base", cfg["id"], deleted)
+        ################################################################################################
         # b) Upsert ONTs
         for vid, r in seen.items():
             conn.execute(
@@ -376,11 +396,14 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
         mapping = dict(conn.execute(
             text("""
                 SELECT vendor_ont_id, id
-                  FROM ont
-                 WHERE olt_id = :olt_id
-                   AND vendor_ont_id = ANY(:vids)
+                FROM ont
+                WHERE olt_id = :olt_id
+                AND vendor_ont_id = ANY(:vids)
             """),
-            {"olt_id": cfg["id"], "vids": list(seen.keys())},
+            {
+                "olt_id": cfg["id"],
+                "vids": current_vids
+            },
         ).all())
 
         # d) Inserta batch de potencias
