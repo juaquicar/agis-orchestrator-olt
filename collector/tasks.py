@@ -368,8 +368,9 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
             seen[r["vendor_ont_id"]] = r
 
         ### CONTRIBUTOR MATIAS -> eliminar ONTs que ya no existen en la OLT de tipo Zyxel #################
+        # TODO: Testear con Huawei. Implementar casuistica Huawei vs Zyxel si procede.
         current_vids = list(seen.keys())
-        if DELETE_MISSING_ONTS and vendor in ["zyxel1240XA", "zyxel2406", "zyxel1408A"]:
+        if DELETE_MISSING_ONTS:
             result = conn.execute(
                 text("""
                     DELETE FROM ont
@@ -385,7 +386,7 @@ def poll_single_olt(cfg: Dict[str, Any]) -> None:
             deleted = result.rowcount or 0
             if deleted:
                 logging.info("OLT %s → %d ONTs eliminadas de la base", cfg["id"], deleted)
-        elif vendor in ["zyxel1240XA", "zyxel2406", "zyxel1408A"]:
+        else:
             logging.info(
                 "OLT %s → borrado de ONTs faltantes omitido por DELETE_ONTS=%s",
                 cfg["id"],

@@ -21,7 +21,7 @@ from .database import get_db  # helper para AsyncSession
 
 
 from fastapi.middleware.cors import CORSMiddleware
-from .agis_client import _get_agis_token, fetch_cto_list, fetch_cto_geojson
+from .agis_client import fetch_cto_list, fetch_cto_geojson
 from fastapi import HTTPException
 from fastapi import Path, Body
 
