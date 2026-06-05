@@ -1,3 +1,18 @@
+> # ⚠️ PROYECTO DESCONTINUADO / NO MANTENIDO
+>
+> Este repositorio ha sido **cedido a Stratos GS**, que continúa su desarrollo y
+> mantenimiento de forma **privativa y con soporte comercial**.
+>
+> **Esta versión pública queda congelada y archivada:**
+> - ✅ Puedes **clonar / descargar** el código tal cual (licencia original vigente).
+> - ❌ **No** se dará soporte.
+> - ❌ **No** se aceptarán *issues* ni *pull requests*.
+> - ❌ **No** habrá nuevas versiones ni correcciones aquí.
+>
+> Para soporte o la versión mantenida, contacta con **Stratos GS**.
+>
+> ---
+
 # AGIS Orchestrator OLT – Guía de Producción
 
 Este paquete contiene un **esqueleto mínimo** para levantar:
